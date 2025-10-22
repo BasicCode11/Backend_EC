@@ -1,0 +1,15 @@
+fastapi==0.111.0
+uvicorn==0.30.0
+python-multipart==0.0.7  # Changed from 0.0.6 to 0.0.7
+python-jose[cryptography]==3.3.0
+passlib[bcrypt,argon2]==1.7.4
+sqlalchemy==2.0.20
+PyMySQL==1.1.0
+alembic==1.11.1
+pydantic==2.8.2                     # Data validation and serialization
+pydantic-settings==2.3.4            # Settings management
+pydantic_core==2.20.1 
+slowapi==0.1.9
+SQLAlchemy==2.0.31
+loguru==0.7.3
+Faker==37.8.0

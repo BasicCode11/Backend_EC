@@ -1,0 +1,61 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+
+.venv/
+env/
+venv/
+ENV/
+myenv/
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.eggs/
+.eggs/
+
+# Env files
+.env
+
+
+# Logs
+logs/app.log
+logs/*.log
+
+
+# Database files
+*.sqlite3
+
+# IDE settings
+.vscode/
+.idea/
+
+.mypy_cache/
+.idea/
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+__pycache__/
+*.py[cod]
+
+# Alembic
+alembic/versions/*.pyc
+alembic/versions/__pycache__/
+
+# Mac/Linux/Windows crap
+.DS_Store
+Thumbs.db
+static/
