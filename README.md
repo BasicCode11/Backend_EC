@@ -1,5 +1,7 @@
 ```
 #install package
+Remove-Item -Recurse -Force .venv
+Remove-Item -Force uv.lock
 
 uv sync
 

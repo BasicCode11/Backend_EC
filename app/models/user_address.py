@@ -36,8 +36,8 @@ class UserAddress(Base):
     state: Mapped[str] = mapped_column(String(100), nullable=False)
     country: Mapped[str] = mapped_column(String(100), nullable=False, default="US")
     postal_code: Mapped[str] = mapped_column(String(20), nullable=False)
-    longitude: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 7), nullable=True)
-    latitude: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 7), nullable=True)
+    longitude: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 7), nullable=True)  # Range: -180 to 180, precision: 7 decimals (~1.1cm accuracy)
+    latitude: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 7), nullable=True)  # Range: -90 to 90, precision: 7 decimals (~1.1cm accuracy)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[DateTime] = mapped_column(

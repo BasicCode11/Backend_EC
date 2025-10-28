@@ -29,17 +29,19 @@ def read_my_profile_bundle(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
+    """Get current user profile with addresses"""
     addresses = AddressService.list_for_user(db, current_user.id)
     return {"user": current_user, "addresses": addresses}
 
 
-# Customer self-service address endpoints
-@router.get("/me/addresses", response_model=List[AddressResponse])
-def list_my_addresses(
+@router.put("/me/profile", response_model=UserResponse)
+def update_my_profile(
+    data: UserSelfUpdate,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    return AddressService.list_for_user(db, current_user.id)
+    """Update current user profile (self-service)"""
+    return UserService.self_update(db, current_user.id, data)
 
 
 @router.post("/me/addresses", response_model=AddressResponse)
@@ -48,8 +50,8 @@ def create_my_address(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    return AddressService.create_for_user(db, current_user.id, data)
-
+    """Create a new address for current user"""
+    return AddressService.create_for_user(db, current_user, data)
 
 @router.put("/me/addresses/{address_id}", response_model=AddressResponse)
 def update_my_address(
@@ -58,6 +60,7 @@ def update_my_address(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
+    """Update a specific address for current user"""
     return AddressService.update_for_user(db, current_user.id, address_id, data)
 
 
@@ -67,8 +70,9 @@ def delete_my_address(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
+    """Delete a specific address for current user"""
     AddressService.delete_for_user(db, current_user.id, address_id)
-    return {"message": "Address deleted"}
+    return {"message": "Address deleted successfully"}
 
 
 @router.get("/user", response_model=List[UserWithRelations])
@@ -96,25 +100,25 @@ def read_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:read"])),
 ):
-    """Get user by ID - Admin only"""
+    """Get user by ID - requires users:read permission"""
     user = UserService.get_by_id(db, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
 
-@router.post("/user", response_model=UserResponse)
+@router.post("/user", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     user_data: UserCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:create"])),
 ):
-    """Create new user - Admin only"""
+    """Create new user - requires users:create permission"""
     try:
         new_user = UserService.create(db, user_data, current_user)
         return new_user
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.put("/user/{user_id}", response_model=UserResponse)
@@ -124,26 +128,26 @@ def update_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:update"])),
 ):
-    """Update user - Admin only"""
+    """Update user - requires users:update permission"""
     try:
         updated_user = UserService.update(db, user_id, user_data, current_user)
         return updated_user
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.delete("/user/{user_id}")
+@router.delete("/user/{user_id}", status_code=status.HTTP_200_OK)
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:delete"])),
 ):
-    """Delete user - Admin only"""
+    """Delete user - requires users:delete permission"""
     try:
         UserService.delete(db, user_id, current_user)
         return {"message": "User deleted successfully"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.post("/user/search", response_model=List[UserWithRelations])
@@ -152,7 +156,7 @@ def search_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:read"])),
 ):
-    """Search users with various filters - Admin only"""
+    """Search users with various filters - requires users:read permission"""
     return UserService.search_users(db, search_params)
 
 
@@ -162,9 +166,9 @@ def get_user_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:read"])),
 ):
-    """Count users - Admin only"""
+    """Count users - requires users:read permission"""
     count = UserService.get_user_count(db, email_verified)
-    return {"count": count}
+    return {"count": count, "email_verified": email_verified}
 
 
 # Admin manage user addresses
@@ -174,16 +178,21 @@ def admin_list_user_addresses(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:read"]))
 ):
+    """List all addresses for a specific user - requires users:read permission"""
     return AddressService.list_for_user(db, user_id)
 
 
-@router.post("/user/{user_id}/addresses", response_model=AddressResponse)
+@router.post("/user/{user_id}/addresses", response_model=AddressResponse, status_code=status.HTTP_201_CREATED)
 def admin_create_user_address(
     user_id: int,
     data: AddressCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:update"]))
 ):
+    """Create address for a specific user - requires users:update permission"""
+    user = UserService.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return AddressService.create_for_user(db, user_id, data)
 
 
@@ -195,6 +204,7 @@ def admin_update_user_address(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:update"]))
 ):
+    """Update address for a specific user - requires users:update permission"""
     return AddressService.update_for_user(db, user_id, address_id, data)
 
 
@@ -205,5 +215,6 @@ def admin_delete_user_address(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:delete"]))
 ):
+    """Delete address for a specific user - requires users:delete permission"""
     AddressService.delete_for_user(db, user_id, address_id)
-    return {"message": "Address deleted"}
+    return {"message": "Address deleted successfully"}

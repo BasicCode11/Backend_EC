@@ -22,11 +22,19 @@ class AddressService:
         return db.execute(stmt).scalars().first()
 
     @staticmethod
-    def create_for_user(db: Session, user_id: int, data: AddressCreate) -> UserAddress:
-        # Ensure default uniqueness per user if is_default is true
-        payload = data.dict()
+    def create_for_user(db: Session, user: User, data: AddressCreate) -> UserAddress:
+        """Create address for a user. Accepts User object or user_id (int)"""
+        user_id = user.id if isinstance(user, User) else user
+        if not user_id:
+            raise ValidationError("User not found")
+        
+        payload = data.model_dump()
         if payload.get("is_default"):
-            db.query(UserAddress).filter(UserAddress.user_id == user_id, UserAddress.is_default == True).update({UserAddress.is_default: False})
+            db.query(UserAddress).filter(
+                UserAddress.user_id == user_id, 
+                UserAddress.is_default == True
+            ).update({UserAddress.is_default: False})
+            db.flush()
 
         address = UserAddress(user_id=user_id, **payload)
         db.add(address)
@@ -36,13 +44,25 @@ class AddressService:
 
     @staticmethod
     def update_for_user(db: Session, user_id: int, address_id: int, data: AddressUpdate) -> UserAddress:
-        address = AddressService.get_for_user(db, user_id, address_id)
+        """Update address for a user. If address_id is None, update by user_id (for single address)"""
+        if address_id is None:
+            # Update first address for user (for /me/addresses PUT endpoint)
+            stmt = select(UserAddress).where(UserAddress.user_id == user_id).limit(1)
+            address = db.execute(stmt).scalars().first()
+        else:
+            address = AddressService.get_for_user(db, user_id, address_id)
+            
         if not address:
             raise ValidationError("Address not found")
 
-        payload = data.dict(exclude_unset=True)
+        payload = data.model_dump(exclude_unset=True)
         if payload.get("is_default"):
-            db.query(UserAddress).filter(UserAddress.user_id == user_id, UserAddress.is_default == True).update({UserAddress.is_default: False})
+            db.query(UserAddress).filter(
+                UserAddress.user_id == user_id, 
+                UserAddress.is_default == True,
+                UserAddress.id != address.id
+            ).update({UserAddress.is_default: False})
+            db.flush()
 
         for field, value in payload.items():
             setattr(address, field, value)

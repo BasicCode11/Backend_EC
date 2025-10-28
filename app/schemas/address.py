@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 
@@ -14,10 +14,24 @@ class AddressBase(BaseModel):
     state: str
     country: str = Field(default="US")
     postal_code: str
-    longitude: Optional[float] = None
-    latitude: Optional[float] = None
+    longitude: Optional[float] = Field(None, ge=-180, le=180, description="Longitude must be between -180 and 180")
+    latitude: Optional[float] = Field(None, ge=-90, le=90, description="Latitude must be between -90 and 90")
     is_default: Optional[bool] = False
     is_active: Optional[bool] = True
+
+    @field_validator('longitude')
+    @classmethod
+    def validate_longitude(cls, v):
+        if v is not None and (v < -180 or v > 180):
+            raise ValueError('Longitude must be between -180 and 180')
+        return v
+
+    @field_validator('latitude')
+    @classmethod
+    def validate_latitude(cls, v):
+        if v is not None and (v < -90 or v > 90):
+            raise ValueError('Latitude must be between -90 and 90')
+        return v
 
 
 class AddressCreate(AddressBase):

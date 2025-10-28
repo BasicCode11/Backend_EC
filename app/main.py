@@ -41,3 +41,7 @@ app.include_router(auth_router, prefix="/api", tags=["Auth"])
 app.include_router(user_router, prefix="/api", tags=["Users"])
 app.include_router(role_router, prefix="/api", tags=["Roles"])
 app.include_router(permission_router, prefix="/api", tags=["Permissions"])
+
+@app.get("/", tags=["health"])
+def health():
+    return {"status": "ok"}

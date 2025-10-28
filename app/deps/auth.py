@@ -1,8 +1,8 @@
-from typing import List , Optional
+from typing import List 
 from fastapi import Depends, HTTPException, status , Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timezone , timedelta
 
 from app.database import get_db
 from app.models.user import User
@@ -14,7 +14,7 @@ from app.core.exceptions import (
     TeamAccessDeniedException,
     AgentAccessDeniedException,
 )
-
+from app.services.auth_service import AuthService
 security = HTTPBearer()
 
 
@@ -37,7 +37,7 @@ def get_current_user(
     role_name = user.role.name if user.role else None
     if role_name == "customer":
         last_seen = user.last_login_at or user.updated_at or user.created_at
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         if last_seen and (now - last_seen) > settings.customer_idle_timeout:
             raise InvalidTokenException("Session expired due to inactivity")
         user.last_login_at = now

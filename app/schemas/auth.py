@@ -84,17 +84,30 @@ class EmailVerificationRequest(BaseModel):
     email: str
     verification_code: str
 
-class PasswordResetRequest(BaseModel):
+class ForgotPasswordRequest(BaseModel):
     email: str
 
-class PasswordResetConfirm(BaseModel):
-    email: str
-    reset_code: str
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return CommonValidation.validate_email(v)
+
+class ResetPasswordRequest(BaseModel):
+    token: str
     new_password: str
 
     @field_validator("new_password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters long")
-        return v
+        return CommonValidation.validate_password(v)
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return CommonValidation.validate_email(v)
+
+class MessageResponse(BaseModel):
+    message: str
