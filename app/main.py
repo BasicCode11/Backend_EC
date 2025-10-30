@@ -37,6 +37,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.include_router(auth_router, prefix="/api", tags=["Auth"])
 app.include_router(user_router, prefix="/api", tags=["Users"])
 app.include_router(role_router, prefix="/api", tags=["Roles"])

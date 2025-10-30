@@ -1,8 +1,9 @@
 from typing import Optional, List
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text 
 from sqlalchemy.orm import Mapped, mapped_column, relationship 
-from sqlalchemy.sql import func
-from app.database import Base
+from sqlalchemy.sql import func 
+from app.database import Base 
+from app.utils.validation import CommonValidation
 
 class User(Base):
     __tablename__ = "users"
@@ -34,7 +35,7 @@ class User(Base):
     
     addresses: Mapped[List["UserAddress"]] = relationship(
         "UserAddress",
-        back_populates="users",
+        back_populates="user",
         lazy="select",
         cascade="all, delete-orphan"
     )
@@ -63,6 +64,9 @@ class User(Base):
         back_populates="user",
         lazy="select"
     )
+
+
+    
 
     # Properties
     @property

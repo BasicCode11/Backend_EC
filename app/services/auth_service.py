@@ -23,6 +23,9 @@ class AuthService:
         user = db.query(User).filter(User.email == email).first()
         if not user or not verify_password(password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        # Allow login even if email not verified (soft verification)
+        # Frontend can show a banner: "Please verify your email"
         return user
     
 
@@ -37,6 +40,22 @@ class AuthService:
                 "user_id": user.id,
                 "uuid": user.uuid,
                 "role_id": user.role_id,
+                "token_type": "access"
+            },
+            expires_delta=expire
+        )
+    
+    @staticmethod
+    def create_user_refresh_token(user: User) -> str:
+        """Create long-lived refresh token for a user"""
+        expire = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        return create_access_token(
+            data={
+                "sub": user.email,
+                "user_id": user.id,
+                "uuid": user.uuid,
+                "role_id": user.role_id,
+                "token_type": "refresh"
             },
             expires_delta=expire
         )
@@ -63,7 +82,7 @@ class AuthService:
             last_name=customer_data.last_name,
             phone=customer_data.phone,
             role_id=customer_role.id,
-            email_verified=False  # Changed to False - user must verify email
+            email_verified=True 
         )
         db.add(new_user)
         db.commit()
@@ -109,41 +128,6 @@ class AuthService:
         
         return verification_token
 
-    @staticmethod
-    def verify_email(db: Session, token: str) -> User:
-        """Verify user email with token"""
-        verification_token = db.query(EmailVerificationToken).filter(
-            EmailVerificationToken.token == token
-        ).first()
-        
-        if not verification_token:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid verification token"
-            )
-        
-        if not verification_token.is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification token has expired or already been used"
-            )
-        
-        # Mark token as used
-        verification_token.mark_as_used()
-        
-        # Update user email_verified status
-        user = db.query(User).filter(User.id == verification_token.user_id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        user.email_verified = True
-        db.commit()
-        db.refresh(user)
-        
-        return user
 
     @staticmethod
     def request_password_reset(db: Session, email: str) -> None:
@@ -152,7 +136,10 @@ class AuthService:
         
         # For security, don't reveal if email exists
         if not user:
-            return
+            raise HTTPException(
+                status_code= status.HTTP_404_NOT_FOUND,
+                detail="Email address not Found! Please Enter Current Email!"
+            )
         
         # Invalidate any existing unused tokens
         db.query(PasswordResetToken).filter(

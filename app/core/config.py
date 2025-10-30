@@ -53,13 +53,13 @@ class Settings(BaseSettings):
 
     AUTO_TOKEN_REFRESH_DAYS: int = Field(30, env="AUTO_TOKEN_REFRESH_DAYS")
 
-    # Database
-    DB_TYPE: str = Field("mysql", env="DB_CONNECTION")
-    DB_USER: str = Field(..., env="DB_USERNAME")
+    # Database - matches .env.example variable names
+    DB_TYPE: str = Field("mysql", env="DB_TYPE")
+    DB_USER: str = Field(..., env="DB_USER")
     DB_PASSWORD: str = Field(..., env="DB_PASSWORD")
     DB_HOST: str = Field(..., env="DB_HOST")
     DB_PORT: int = Field(3306, env="DB_PORT")
-    DB_NAME: str = Field(..., env="DB_DATABASE")
+    DB_NAME: str = Field(..., env="DB_NAME")
 
     @property
     def web_inactivity_timeout(self) -> timedelta:

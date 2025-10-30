@@ -51,7 +51,7 @@ class UserAddress(Base):
     )
     
     # Relationship
-    users: Mapped["User"] = relationship("User", back_populates="addresses", lazy="select")
+    user: Mapped["User"] = relationship("User", back_populates="addresses", lazy="select")
     
     # Constraints
     __table_args__ = (

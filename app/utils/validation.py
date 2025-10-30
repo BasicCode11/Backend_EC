@@ -1,10 +1,6 @@
-
-from ast import List
-from nt import lseek
 import re 
 from typing import Any, Optional
-from pydantic import field_validator , ValidationInfo
-from app.core.exceptions import ValidationError ,ForbiddenException
+from app.core.exceptions import ValidationError, ForbiddenException
 from urllib.parse import urlparse
 
 class CommonValidation:
@@ -23,21 +19,21 @@ class CommonValidation:
             raise ValidationError("Password is required")
         if len(password) < 6:
             raise ValidationError("Password must be at least 6 characters long")
-        if len(password) > 10:
+        if len(password) > 15:
             raise ValidationError("Password must be less than 10 characters long")
         return password
+    
+    @staticmethod
+    def validate_phone(phone: str) -> str:
+        # Return None if phone is not required
+        if phone is None or phone.strip() == "":
+            return phone
 
-        # Require at least one uppercase letter, one lowercase letter, one digit, and one special character
-        if not re.search(r'[A-Z]', password):
-            raise BadRequestException("Password must contain at least one uppercase letter")
-        if not re.search(r'[a-z]', password):
-            raise BadRequestException("Password must contain at least one lowercase letter")
-        if not re.search(r'\d', password):
-            raise BadRequestException("Password must contain at least one digit")
-        if not re.search(r'[@$!%*?&._-]', password):
-            raise BadRequestException("Password must contain at least one special character (@$!%*?&._-)")
-
-        return password
+        phone = phone.strip()
+        pattern = r"^\+?\d{7,15}$"  # Allows digits with optional + and length 7–15
+        if not re.match(pattern, phone):
+            raise ValidationError(f"Invalid phone number format: {phone}")
+        return phone
 
     @staticmethod
     def validate_user_has_role(user_roles: None | list[str]) -> list[str]:

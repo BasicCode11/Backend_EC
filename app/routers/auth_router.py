@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends , HTTPException, status
+from fastapi import APIRouter, Depends , HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta , datetime , timezone
 from sqlalchemy.orm import Session
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import uuid
 from app.database import get_db
 from app.models.user import User
@@ -14,7 +16,6 @@ from app.schemas.auth import (
     CustomerRegistration,
     ForgotPasswordRequest,
     ResetPasswordRequest,
-    ResendVerificationRequest,
     MessageResponse
 )
 from app.core.config import settings
@@ -22,46 +23,101 @@ from app.core.security import create_access_token , oauth2_scheme , decode_acces
 from app.deps.auth import get_current_user
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
-@router.post("/login", response_model=LoginResponse)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = AuthService.authenticate_user(db, request.email, request.password)
+@router.post("/login")
+@limiter.limit("5/minute")  # Max 5 login attempts per minute
+def login(request: Request, login_req: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Login with email and password.
+    
+    Returns:
+    - access_token: Short-lived token (1 day) for API requests
+    - refresh_token: Long-lived token (30 days) to get new access tokens
+    
+    Note: You can login even if email is not verified.
+    Some features may be limited until email verification is complete.
+    """
+    user = AuthService.authenticate_user(db, login_req.email, login_req.password)
 
+    # Create access token (1 day)
     access_token = AuthService.create_user_access_token(user)
+    
+    # Create refresh token (30 days) if enabled
     refresh_token = None
-    # Optional refresh token
     if settings.REFRESH_TOKEN_ENABLED:
-        refresh_token = AuthService.create_user_access_token(user, expire_delta=None)
+        refresh_token = AuthService.create_user_refresh_token(user)
 
-    return LoginResponse(
-        access_token=access_token,
-        token_type="bearer",
-        refresh_token=refresh_token,
-        user=UserResponse.from_orm(user)
-    )
-
-
-@router.post("/refresh", response_model=LoginResponse)
-def refresh_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    # Re-issue a fresh 1-day token if user is still within idle window
-    token_data = decode_access_token(token)
-    user = db.query(User).filter(User.id == token_data.user_id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-    # This endpoint also bumps last activity
+    # Update last login
     user.last_login_at = datetime.now(timezone.utc)
     db.add(user)
     db.commit()
 
-    new_token = AuthService.create_user_access_token(user)
-    return LoginResponse(
-        access_token=new_token,
-        token_type="bearer",
-        refresh_token=None,
-        user=UserResponse.from_orm(user)
-    )
+    response = {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "refresh_token": refresh_token,
+        "expires_in": 86400,  # 1 day in seconds
+        "user": UserResponse.from_orm(user)
+    }
+    
+    # Add warning if email not verified
+    if not user.email_verified:
+        response["warning"] = "Please verify your email to unlock all features"
+    
+    return response
+
+
+@router.post("/refresh")
+def refresh_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """
+    Refresh access token using refresh token.
+    
+    Send your refresh_token in Authorization header.
+    Returns a new access_token (valid for 1 day).
+    
+    Frontend should call this:
+    - When access token expires (check expires_in)
+    - Or automatically every 23 hours
+    """
+    # Decode and validate refresh token
+    token_data = decode_access_token(token)
+    
+    # Validate it's a refresh token
+    if token_data.get("token_type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Invalid token type. Refresh token required."
+        )
+    
+    # Check if token is blacklisted
+    from app.services.token_blacklist_service import TokenBlacklistService
+    if TokenBlacklistService.is_token_blacklisted(db, token_data.jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked"
+        )
+    
+    # Get user
+    user = db.query(User).filter(User.id == token_data.user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    # Update last activity
+    user.last_login_at = datetime.now(timezone.utc)
+    db.add(user)
+    db.commit()
+
+    # Create new access token (refresh token stays the same)
+    new_access_token = AuthService.create_user_access_token(user)
+    
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer",
+        "expires_in": 86400,  # 1 day
+        "user": UserResponse.from_orm(user)
+    }
 
 
 @router.post("/logout")
@@ -73,9 +129,30 @@ def logout(
     return {"message": "Successfully logged out"}
     
 
-@router.post("/register", response_model=UserResponse)
-def register_customer(request: CustomerRegistration, db: Session = Depends(get_db)):
-    return AuthService.register_customer(db, request)
+@router.post("/register")
+@limiter.limit("3/minute")  # Max 3 registrations per minute
+def register_customer(request: Request, registration: CustomerRegistration, db: Session = Depends(get_db)):
+    """
+    Register a new customer account.
+    
+    After registration:
+    1. You can login immediately with your credentials
+    2. A verification email has been sent (check logs in development)
+    3. Please verify your email to unlock all features
+    """
+    user = AuthService.register_customer(db, registration)
+    
+    return {
+        "message": "Registration successful! You can now login.",
+        "user": UserResponse.from_orm(user),
+        "email_verified": user.email_verified,
+        "next_steps": [
+            "Login with your credentials at /api/login",
+            "Check your email for verification link",
+            "Verify your email to unlock all features"
+        ],
+        "note": "In development mode, check application logs for the verification link"
+    }
     
 
 @router.get("/me", response_model=UserResponse)
@@ -84,31 +161,19 @@ def get_current_user_endpoint(user: User = Depends(get_current_user)):
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
-def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+# @limiter.limit("3/hour")  # Max 3 password reset requests per hour
+def forgot_password(request: Request, forgot_req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """Request password reset - sends email with reset link"""
-    AuthService.request_password_reset(db, request.email)
+    AuthService.request_password_reset(db = db, email=forgot_req.email )
     return MessageResponse(
         message="If the email exists, a password reset link has been sent"
     )
 
 
 @router.post("/reset-password", response_model=MessageResponse)
-def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/hour")  # Max 5 password reset attempts per hour  
+def reset_password(request: Request, reset_req: ResetPasswordRequest, db: Session = Depends(get_db)):
     """Reset password using token from email"""
-    AuthService.reset_password(db, request.token, request.new_password)
+    AuthService.reset_password(db, reset_req.token, reset_req.new_password)
     return MessageResponse(message="Password has been reset successfully")
-
-
-@router.get("/verify-email/{token}", response_model=MessageResponse)
-def verify_email(token: str, db: Session = Depends(get_db)):
-    """Verify user email with token from email link"""
-    AuthService.verify_email(db, token)
-    return MessageResponse(message="Email verified successfully")
-
-
-@router.post("/resend-verification", response_model=MessageResponse)
-def resend_verification(request: ResendVerificationRequest, db: Session = Depends(get_db)):
-    """Resend email verification link"""
-    AuthService.resend_verification_email(db, request.email)
-    return MessageResponse(message="Verification email has been sent")
 

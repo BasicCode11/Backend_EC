@@ -15,6 +15,7 @@ from app.core.exceptions import (
     AgentAccessDeniedException,
 )
 from app.services.auth_service import AuthService
+from app.services.token_blacklist_service import TokenBlacklistService
 security = HTTPBearer()
 
 
@@ -26,20 +27,31 @@ def get_current_user(
 ) -> User:
     token = credentials.credentials
     token_data = decode_access_token(token)
+    
+    # Check if token is blacklisted (logged out)
+    if TokenBlacklistService.is_token_blacklisted(db, token_data.jti):
+        raise InvalidTokenException("Token has been revoked")
 
     user = db.query(User).filter(User.email == token_data.sub).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if not user.email_verified:
-        raise ForbiddenException("Email not verified")
+    
+    # Allow unverified users to login (soft verification)
+    # They'll see warnings but can still access basic features
 
     # Enforce idle timeout (customers)
     role_name = user.role.name if user.role else None
     if role_name == "customer":
         last_seen = user.last_login_at or user.updated_at or user.created_at
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
+        
+        # Make last_seen timezone-aware if it's naive
+        if last_seen and last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+        
         if last_seen and (now - last_seen) > settings.customer_idle_timeout:
             raise InvalidTokenException("Session expired due to inactivity")
+        
         user.last_login_at = now
         db.add(user)
         db.commit()
@@ -57,10 +69,14 @@ def get_current_user(
     return user
 
 
-#  ACTIVE USER 
+#  ACTIVE USER (Verified Email Required)
 def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
+    """Require email verification for sensitive operations"""
     if not current_user.email_verified:
-        raise HTTPException(status_code=400, detail="Email not verified")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Email verification required for this action. Please verify your email."
+        )
     return current_user
 
 
@@ -98,41 +114,18 @@ def require_permission(required_permissions: List[str]):
     return permission_checker
 
 
-#  TEAM CHECK 
-def require_team_access(resource_team_id: int):
-    """Check if the resource belongs to user's team"""
-    def team_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if not current_user.team_id or current_user.team_id != resource_team_id:
-            raise TeamAccessDeniedException(
-                f"Resource belongs to team {resource_team_id}, but you are in team {current_user.team_id}"
-            )
-        return current_user
-    return team_checker
+# NOTE: Team/Agent features removed - not applicable for e-commerce platform
+# If you need multi-tenant support, add team_id field to User model first
 
-
-#  AGENT CHECK 
-def require_agent_access(resource_agent_id: int):
-    """Check if the resource belongs to user's agent"""
-    def agent_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if not current_user.agent_id or current_user.agent_id != resource_agent_id:
-            raise AgentAccessDeniedException(
-                f"Resource belongs to agent {resource_agent_id}, but you are under agent {current_user.agent_id}"
-            )
-        return current_user
-    return agent_checker
-
-
-# TEAM + AGENT CHECK
-def require_team_and_agent(resource_team_id: int, resource_agent_id: int):
-    """Check both team and agent access"""
-    def checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if not current_user.team_id or current_user.team_id != resource_team_id:
-            raise TeamAccessDeniedException(
-                f"Resource belongs to team {resource_team_id}, but you are in team {current_user.team_id}"
-            )
-        if not current_user.agent_id or current_user.agent_id != resource_agent_id:
-            raise AgentAccessDeniedException(
-                f"Resource belongs to agent {resource_agent_id}, but you are under agent {current_user.agent_id}"
-            )
-        return current_user
-    return checker
+# Commented out for now - uncomment and modify User model if needed:
+# def require_team_access(resource_team_id: int):
+#     """Check if the resource belongs to user's team"""
+#     def team_checker(current_user: User = Depends(get_current_active_user)) -> User:
+#         if not hasattr(current_user, 'team_id') or not current_user.team_id:
+#             raise HTTPException(status_code=400, detail="User has no team assigned")
+#         if current_user.team_id != resource_team_id:
+#             raise TeamAccessDeniedException(
+#                 f"Resource belongs to team {resource_team_id}, but you are in team {current_user.team_id}"
+#             )
+#         return current_user
+#     return team_checker

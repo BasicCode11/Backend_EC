@@ -22,6 +22,11 @@ class TokenData(BaseModel):
     exp: Optional[int] = None   # Expiration timestamp
     jti: Optional[str] = None   # Unique identifier for the token
     iat: Optional[int] = None   # Issued at timestamp
+    token_type: Optional[str] = "access"  # Token type: "access" or "refresh"
+    
+    def get(self, key: str, default=None):
+        """Helper method to get attributes like a dict"""
+        return getattr(self, key, default)
 
 
 

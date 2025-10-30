@@ -49,10 +49,12 @@ class EmailService:
         try:
             # TODO: Integrate with actual email service (SMTP, SendGrid, etc.)
             # For now, just log the email
+            logger.info("="*80)
             logger.info(f"[EMAIL] To: {recipient_email}")
             logger.info(f"[EMAIL] Subject: {subject}")
             logger.info(f"[EMAIL] Template: {template_name}")
             logger.info(f"[EMAIL] Content:\n{content}")
+            logger.info("="*80)
             
             # Mark as sent
             email_notification.status = EmailStatus.SENT.value

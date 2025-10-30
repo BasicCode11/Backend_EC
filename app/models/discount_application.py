@@ -45,6 +45,7 @@ class DiscountApplication(Base):
     
     user: Mapped["User"] = relationship(
         "User",
+        back_populates="discount_applications",
         lazy="select"
     )
 
