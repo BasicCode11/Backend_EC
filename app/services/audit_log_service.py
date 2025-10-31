@@ -32,6 +32,13 @@ class AuditLogService:
         description: Optional[str] = None
     ) -> AuditLog:
         """Create a new audit log entry"""
+        # Validate user_id exists if provided
+        if user_id is not None:
+            user_exists = db.query(User).filter(User.id == user_id).first()
+            if not user_exists:
+                # Set user_id to None if user doesn't exist (e.g., deleted user)
+                user_id = None
+        
         audit_log = AuditLog(
             user_id=user_id,
             action=action,

@@ -13,16 +13,35 @@ from app.services.token_blacklist_service import TokenBlacklistService
 from app.schemas.auth import CustomerRegistration
 from app.core.security import hash_password
 from app.services.email_service import EmailService
+from app.services.audit_log_service import AuditLogService
 import uuid
 import secrets
 
 class AuthService:
 
     @staticmethod
-    def authenticate_user(db: Session, email: str, password: str) -> User:
+    def authenticate_user(db: Session, email: str, password: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> User:
         user = db.query(User).filter(User.email == email).first()
         if not user or not verify_password(password, user.password_hash):
+            # Log failed login attempt
+            if user:
+                AuditLogService.log_login(
+                    db=db,
+                    user_id=user.id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    success=False
+                )
             raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        # Log successful login
+        AuditLogService.log_login(
+            db=db,
+            user_id=user.id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            success=True
+        )
         
         # Allow login even if email not verified (soft verification)
         # Frontend can show a banner: "Please verify your email"
@@ -61,7 +80,7 @@ class AuthService:
         )
 
     @staticmethod
-    def register_customer(db: Session, customer_data: CustomerRegistration) -> User:
+    def register_customer(db: Session, customer_data: CustomerRegistration, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> User:
         existing_user = db.query(User).filter(User.email == customer_data.email).first()
         if existing_user:
             raise HTTPException(status_code=400, detail="Email already registered")
@@ -88,6 +107,23 @@ class AuthService:
         db.commit()
         db.refresh(new_user)
         
+        # Log user registration
+        AuditLogService.log_create(
+            db=db,
+            user_id=None,  # Self-registration, no authenticated user
+            entity_type="User",
+            entity_id=new_user.id,
+            entity_uuid=new_user.uuid,
+            new_values={
+                "email": new_user.email,
+                "first_name": new_user.first_name,
+                "last_name": new_user.last_name,
+                "role": "customer"
+            },
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        
         # Generate verification token and send email
         verification_token = AuthService.generate_verification_token(db, new_user)
         EmailService.send_verification_email(
@@ -99,9 +135,17 @@ class AuthService:
         return new_user
 
     @staticmethod
-    def logout_user(db: Session, token_data: TokenData):
+    def logout_user(db: Session, token_data: TokenData, ip_address: Optional[str] = None, user_agent: Optional[str] = None):
         expires = datetime.fromtimestamp(token_data.exp, tz=timezone.utc)
         TokenBlacklistService.blacklist_token(db, token_data.jti, expires)
+        
+        # Log logout
+        AuditLogService.log_logout(
+            db=db,
+            user_id=token_data.user_id,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
 
     @staticmethod
     def generate_verification_token(db: Session, user: User) -> EmailVerificationToken:
@@ -248,6 +292,17 @@ class AuthService:
         user.password_hash = hash_password(new_password)
         db.commit()
         db.refresh(user)
+        
+        # Log password reset
+        AuditLogService.create_log(
+            db=db,
+            user_id=user.id,
+            action="PASSWORD_RESET",
+            entity_type="User",
+            entity_id=user.id,
+            entity_uuid=user.uuid,
+            description="User password was reset via email verification"
+        )
         
         # Send confirmation email
         EmailService.send_password_changed_notification(

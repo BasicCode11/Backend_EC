@@ -6,9 +6,10 @@ from app.core.security import hash_password, verify_password
 from app.schemas.user import UserCreate, UserUpdate, UserSearchParams, UserSelfUpdate , UserProfileBundle , UserResponse , RoleOut , UserWithPerPage
 from app.core.exceptions import ValidationError, ForbiddenException
 import uuid
-from app.schemas.address import AddressResponse, AddressCreate
+from app.schemas.address import AddressResponse, AddressCreate , AddressUpdate
 from app.services.address_service import AddressService
-
+from app.services.audit_log_service import AuditLogService
+from app.services.file_service import LogoUpload
 class UserService:
     """Service layer for user operations."""
 
@@ -119,11 +120,13 @@ class UserService:
         )
 
     @staticmethod
-    def create(db: Session, user_data: UserCreate, address_data: AddressCreate, created_by: User) -> User:
+    def create(db: Session, user_data: UserCreate, address_data: AddressCreate, created_by: User , picture: Optional[str] = None) -> User:
         if UserService.get_by_email(db, user_data.email):
             raise ValidationError("Email already exists")
 
         hashed_pw = hash_password(user_data.password)
+
+        picture_url = LogoUpload._save_image(picture) if picture else None
 
         db_user = User(
             uuid=str(uuid.uuid4()),
@@ -132,7 +135,7 @@ class UserService:
             first_name=user_data.first_name,
             last_name=user_data.last_name,
             phone=user_data.phone,
-            picture=user_data.picture,
+            picture=picture_url,
             role_id=user_data.role_id,
             email_verified=True  # Admin created users are auto-verified
         )
@@ -145,54 +148,115 @@ class UserService:
         if address_data:
             AddressService.create_for_user(db, db_user, address_data)
         
+        # Log user creation
+        AuditLogService.log_create(
+            db=db,
+            user_id=created_by.id,
+            entity_type="User",
+            entity_id=db_user.id,
+            entity_uuid=db_user.uuid,
+            new_values={
+                "email": db_user.email,
+                "first_name": db_user.first_name,
+                "last_name": db_user.last_name,
+                "role_id": db_user.role_id,
+                "phone": db_user.phone
+            }
+        )
+        
         return db_user
 
     @staticmethod
-    def update(db: Session, user_id: int, user_data: UserUpdate, updated_by: User) -> User:
+    def update(db: Session, user_id: int, user_data: UserUpdate, address_data: AddressUpdate,updated_by: User , picture: Optional[str] = None) -> User:
         db_user = UserService.get_by_id(db, user_id)
         if not db_user:
             raise ValidationError("User not found")
+        
+        if picture:
+            LogoUpload._delete_logo(db_user.picture)
+            db_user.picture = LogoUpload._save_image(picture)
 
-        update_data = user_data.dict(exclude_unset=True)
-        if "password" in update_data:
-            update_data["password_hash"] = hash_password(update_data["password"])
-            del update_data["password"]
+        # Store old values for audit
+        old_values = {
+            "email": db_user.email,
+            "first_name": db_user.first_name,
+            "last_name": db_user.last_name,
+            "role_id": db_user.role_id,
+            "phone": db_user.phone,
+            "picture": db_user.picture,
+            "email_verified": db_user.email_verified
+        }
 
-        for field, value in update_data.items():
+        for field, value in user_data.dict(exclude_unset=True).items():
             setattr(db_user, field, value)
 
         db.commit()
         db.refresh(db_user)
+        
+        if address_data:
+            user_address = AddressService.list_for_user(db , user_id)
+            if user_address:
+                AddressService.update_for_user(db, user_id, address_data)
+
+        # Store new values for audit
+        new_values = {
+            "email": db_user.email,
+            "first_name": db_user.first_name,
+            "last_name": db_user.last_name,
+            "role_id": db_user.role_id,
+            "phone": db_user.phone,
+            "picture": db_user.picture,
+            "email_verified": db_user.email_verified
+        }
+        
+        # Log user update
+        AuditLogService.log_update(
+            db=db,
+            user_id=updated_by.id,
+            entity_type="User",
+            entity_id=db_user.id,
+            entity_uuid=db_user.uuid,
+            old_values=old_values,
+            new_values=new_values
+        )
+        
         return db_user
-
-    @staticmethod
-    def self_update(db: Session, user_id: int, user_data: UserSelfUpdate) -> User:
-        db_user = UserService.get_by_id(db, user_id)
-        if not db_user:
-            raise ValidationError("User not found")
-        if user_data.comfime_password and not verify_password(user_data.comfime_password, db_user.password_hash):
-            raise ValidationError("Current password is incorrect")
-        update_data = user_data.dict(exclude_unset=True)
-        if "password" in update_data and update_data["password"]:
-            update_data["password_hash"] = hash_password(update_data["password"])
-            del update_data["password"]
-
-        # Restrict fields to only allowed ones implicitly by schema
-        for field, value in update_data.items():
-            setattr(db_user, field, value)
-
-        db.commit()
-        db.refresh(db_user)
-        return db_user
+    
 
     @staticmethod
     def delete(db: Session, user_id: int, deleted_by: User) -> None:
         db_user = UserService.get_by_id(db, user_id)
         if not db_user:
             raise ValidationError("User not found")
+        
+        # Store user info before deletion
+        old_values = {
+            "email": db_user.email,
+            "first_name": db_user.first_name,
+            "last_name": db_user.last_name,
+            "role_id": db_user.role_id
+        }
+        user_uuid = db_user.uuid
+        if db_user.picture:
+            LogoUpload._delete_logo(db_user.picture)
 
         db.delete(db_user)
         db.commit()
+        
+        db_address = AddressService.get_for_user(db, user_id)
+        if db_address:
+            AddressService.delete_for_user(db, db_address.id)
+
+        # Log user deletion
+        AuditLogService.log_delete(
+            db=db,
+            user_id=deleted_by.id,
+            entity_type="User",
+            entity_id=user_id,
+            entity_uuid=user_uuid,
+            old_values=old_values
+        )
+
 
     @staticmethod
     def authenticate(db: Session, email: str, password: str) -> Optional[User]:

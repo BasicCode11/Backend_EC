@@ -41,7 +41,11 @@ def login(request: Request, login_req: LoginRequest, db: Session = Depends(get_d
     Note: You can login even if email is not verified.
     Some features may be limited until email verification is complete.
     """
-    user = AuthService.authenticate_user(db, login_req.email, login_req.password)
+    # Extract client info
+    ip_address = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.headers.get("X-Real-IP", "") or (request.client.host if request.client else None)
+    user_agent = request.headers.get("User-Agent")
+    
+    user = AuthService.authenticate_user(db, login_req.email, login_req.password, ip_address, user_agent)
 
     # Create access token (1 day)
     access_token = AuthService.create_user_access_token(user)
@@ -124,10 +128,16 @@ def refresh_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get
 
 @router.post("/logout")
 def logout(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+    request: Request,
+    token: str = Depends(oauth2_scheme), 
+    db: Session = Depends(get_db)
 ):
+    # Extract client info
+    ip_address = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.headers.get("X-Real-IP", "") or (request.client.host if request.client else None)
+    user_agent = request.headers.get("User-Agent")
+    
     token_data = decode_access_token(token)
-    AuthService.logout_user(db, token_data)
+    AuthService.logout_user(db, token_data, ip_address, user_agent)
     return {"message": "Successfully logged out"}
     
 
@@ -142,7 +152,11 @@ def register_customer(request: Request, registration: CustomerRegistration, db: 
     2. A verification email has been sent (check logs in development)
     3. Please verify your email to unlock all features
     """
-    user = AuthService.register_customer(db, registration)
+    # Extract client info
+    ip_address = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.headers.get("X-Real-IP", "") or (request.client.host if request.client else None)
+    user_agent = request.headers.get("User-Agent")
+    
+    user = AuthService.register_customer(db, registration, ip_address, user_agent)
     
     return {
         "message": "Registration successful! You can now login.",

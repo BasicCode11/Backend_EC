@@ -10,19 +10,16 @@ class UserBase(BaseModel):
     last_name: str
     role_id: int
     phone: Optional[str] = None
-    picture: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
 
 class UserUpdate(BaseModel):
     email: Optional[str] = None
-    password: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     role_id: Optional[int] = None
     phone: Optional[str] = None
-    picture: Optional[str] = None
     email_verified: Optional[bool] = None
 
 class UserSelfUpdate(BaseModel):

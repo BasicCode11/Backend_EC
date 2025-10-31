@@ -5,7 +5,7 @@ from slowapi import _rate_limit_exceeded_handler , Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from fastapi.staticfiles import StaticFiles
-
+import os 
 from .core.config import settings
 from .database import Base, engine
 from .core.middleware import  register_middlewares 
@@ -38,6 +38,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+#static folder store image 
+os.makedirs("app/static/images", exist_ok=True)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 # Register rate limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
