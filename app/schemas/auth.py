@@ -97,8 +97,29 @@ class ForgotPasswordRequest(BaseModel):
     def validate_email(cls, v: str) -> str:
         return CommonValidation.validate_email(v)
 
+class VerifyResetCodeRequest(BaseModel):
+    email: str
+    code: str
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return CommonValidation.validate_email(v)
+    
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) != 6 or not v.isdigit():
+            raise ValueError("Verification code must be 6 digits")
+        return v
+
+class VerifyResetCodeResponse(BaseModel):
+    message: str
+    reset_token: str
+
 class ResetPasswordRequest(BaseModel):
-    token: str
+    reset_token: str
     new_password: str
 
     @field_validator("new_password")

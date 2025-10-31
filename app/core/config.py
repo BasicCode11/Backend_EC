@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     DB_PORT: int = Field(3306, env="DB_PORT")
     DB_NAME: str = Field(..., env="DB_NAME")
 
+    SMTP_HOST: str = Field(default="smtp.gmail.com", env="SMTP_HOST")
+    SMTP_PORT: int = Field(default=587, env="SMTP_PORT")
+    SMTP_USER: str = Field(..., env="SMTP_USER")
+    SMTP_PASSWORD: str = Field(..., env="SMTP_PASSWORD")
+    SMTP_FROM_EMAIL: str = Field(..., env="SMTP_FROM_EMAIL")
+    SMTP_FROM_NAME: str = Field(default="E-commerce Platform", env="SMTP_FROM_NAME")
+
     @property
     def web_inactivity_timeout(self) -> timedelta:
         return timedelta(minutes=self.WEB_INACTIVITY_TIMEOUT_MINUTES)

@@ -13,6 +13,7 @@ from .routers.role_router import router as role_router
 from .routers.permission_router import router as permission_router
 from .routers.user_route import router as user_router
 from .routers.auth_router import router as auth_router
+from .routers.audit_log_router import router as audit_log_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,6 +46,7 @@ app.include_router(auth_router, prefix="/api", tags=["Auth"])
 app.include_router(user_router, prefix="/api", tags=["Users"])
 app.include_router(role_router, prefix="/api", tags=["Roles"])
 app.include_router(permission_router, prefix="/api", tags=["Permissions"])
+app.include_router(audit_log_router, prefix="/api", tags=["Audit Logs"])
 
 @app.get("/", tags=["health"])
 def health():

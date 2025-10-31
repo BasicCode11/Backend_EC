@@ -11,14 +11,14 @@ from app.schemas.user import (
     UserSearchParams,
     UserSelfUpdate,
     UserProfileBundle,
+    UserWithPerPage,
+    UserWithAddressCreate
 )
 from app.schemas.address import AddressCreate, AddressUpdate, AddressResponse
 from app.services.address_service import AddressService
 from app.services.user_service import UserService
 from app.deps.auth import (
-    get_current_user,
     get_current_active_user,
-    require_super_admin,
     require_permission,
 )
 
@@ -41,7 +41,7 @@ def update_my_profile(
     db: Session = Depends(get_db),
 ):
     """Update current user profile (self-service)"""
-    return UserService.self_update(db, current_user.id, data)
+    return UserService.self_update(db = db, user_id=current_user.id ,user_data= data)
 
 
 @router.post("/me/addresses", response_model=AddressResponse)
@@ -53,15 +53,14 @@ def create_my_address(
     """Create a new address for current user"""
     return AddressService.create_for_user(db, current_user, data)
 
-@router.put("/me/addresses/{address_id}", response_model=AddressResponse)
+@router.put("/me/addresses", response_model=AddressResponse)
 def update_my_address(
-    address_id: int,
     data: AddressUpdate,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Update a specific address for current user"""
-    return AddressService.update_for_user(db, current_user.id, address_id, data)
+    return AddressService.update_for_user(db, current_user.id, data)
 
 
 @router.delete("/me/addresses/{address_id}")
@@ -75,22 +74,20 @@ def delete_my_address(
     return {"message": "Address deleted successfully"}
 
 
-@router.get("/user", response_model=List[UserWithRelations])
+@router.get("/user", response_model=UserWithPerPage)
 def read_users(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
     role_id: Optional[int] = None,
-    email_verified: Optional[bool] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:read"])),
 ):
     """List users with optional filters - Admin only"""
     return UserService.get_all(
         db=db,
-        skip=skip,
+        page = page,
         limit=limit,
-        role_id=role_id,
-        email_verified=email_verified,
+        role_id=role_id
     )
 
 
@@ -109,13 +106,13 @@ def read_user(
 
 @router.post("/user", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
-    user_data: UserCreate,
+    payload: UserWithAddressCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["users:create"])),
 ):
     """Create new user - requires users:create permission"""
     try:
-        new_user = UserService.create(db, user_data, current_user)
+        new_user = UserService.create(db, payload.user, payload.address , current_user)
         return new_user
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

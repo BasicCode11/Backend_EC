@@ -131,7 +131,7 @@ class AuthService:
 
     @staticmethod
     def request_password_reset(db: Session, email: str) -> None:
-        """Request password reset - generates token and sends email"""
+        """Request password reset - generates token and verification code, sends email"""
         user = db.query(User).filter(User.email == email).first()
         
         # For security, don't reveal if email exists
@@ -148,49 +148,97 @@ class AuthService:
         ).update({"used": True})
         db.commit()
         
-        # Create new token
+        # Generate 6-digit verification code
+        verification_code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+        
+        # Create new token (for backend tracking)
         token = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)  # 15 minutes expiry
         
         reset_token = PasswordResetToken(
             user_id=user.id,
             token=token,
+            verification_code=verification_code,
             expires_at=expires_at
         )
         db.add(reset_token)
         db.commit()
         
-        # Send email
+        # Send email with verification code
         EmailService.send_password_reset_email(
             db=db,
             recipient_email=user.email,
-            reset_token=token
+            verification_code=verification_code
         )
 
     @staticmethod
-    def reset_password(db: Session, token: str, new_password: str) -> User:
-        """Reset password with token"""
+    def verify_reset_code(db: Session, email: str, code: str) -> str:
+        """Verify reset code and return reset token if valid"""
+        user = db.query(User).filter(User.email == email).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email address not found"
+            )
+        
+        # Find the most recent valid reset token for this user
         reset_token = db.query(PasswordResetToken).filter(
-            PasswordResetToken.token == token
-        ).first()
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.verification_code == code,
+            PasswordResetToken.used == False
+        ).order_by(PasswordResetToken.created_at.desc()).first()
         
         if not reset_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid verification code"
+            )
+        
+        if not reset_token.is_code_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Verification code has expired or already been used"
+            )
+        
+        # Mark code as verified
+        reset_token.mark_code_verified()
+        db.commit()
+        
+        # Return the token for password reset
+        return reset_token.token
+    
+    @staticmethod
+    def reset_password(db: Session, reset_token: str, new_password: str) -> User:
+        """Reset password with verified token"""
+        token_record = db.query(PasswordResetToken).filter(
+            PasswordResetToken.token == reset_token
+        ).first()
+        
+        if not token_record:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid reset token"
             )
         
-        if not reset_token.is_valid:
+        # Check if code was verified
+        if not token_record.code_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please verify your code first"
+            )
+        
+        if not token_record.is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Reset token has expired or already been used"
             )
         
         # Mark token as used
-        reset_token.mark_as_used()
+        token_record.mark_as_used()
         
         # Update user password
-        user = db.query(User).filter(User.id == reset_token.user_id).first()
+        user = db.query(User).filter(User.id == token_record.user_id).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

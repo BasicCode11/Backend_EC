@@ -8,12 +8,12 @@ class AddressBase(BaseModel):
     label: Optional[str] = None
     recipient_name: Optional[str] = None
     company: Optional[str] = None
-    street_address: str
+    street_address: Optional[str] = None
     apartment_suite: Optional[str] = None
-    city: str
-    state: str
-    country: str = Field(default="US")
-    postal_code: str
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: str = Field(default="KHR")
+    postal_code: Optional[str] = None
     longitude: Optional[float] = Field(None, ge=-180, le=180, description="Longitude must be between -180 and 180")
     latitude: Optional[float] = Field(None, ge=-90, le=90, description="Latitude must be between -90 and 90")
     is_default: Optional[bool] = False

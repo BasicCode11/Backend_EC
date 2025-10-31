@@ -2,16 +2,18 @@ from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.models.email_notification import EmailNotification, EmailStatus
+from app.core.config import settings  # ✅ Import your settings here
 import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 logger = logging.getLogger(__name__)
 
-
 class EmailService:
     """
-    Email service for sending emails.
-    This is a basic implementation that logs emails.
-    In production, integrate with SMTP, SendGrid, AWS SES, etc.
+    Email service for sending emails (via SMTP).
+    Works with Gmail App Passwords or any SMTP service.
     """
 
     @staticmethod
@@ -24,17 +26,19 @@ class EmailService:
     ) -> EmailNotification:
         """
         Send an email and log it to the database.
-        
+
         Args:
             db: Database session
             recipient_email: Recipient's email address
             subject: Email subject
             template_name: Template identifier
             content: Email content/body
-            
+
         Returns:
             EmailNotification: The created email notification record
         """
+
+        # Create DB record first
         email_notification = EmailNotification(
             recipient_email=recipient_email,
             subject=subject,
@@ -47,29 +51,65 @@ class EmailService:
         db.refresh(email_notification)
 
         try:
-            # TODO: Integrate with actual email service (SMTP, SendGrid, etc.)
-            # For now, just log the email
-            logger.info("="*80)
-            logger.info(f"[EMAIL] To: {recipient_email}")
+            # ✅ Load SMTP Config from settings.py
+            smtp_host = settings.SMTP_HOST
+            smtp_port = settings.SMTP_PORT
+            smtp_user = settings.SMTP_USER
+            smtp_password = settings.SMTP_PASSWORD
+            smtp_from_email = settings.SMTP_FROM_EMAIL or smtp_user
+            smtp_from_name = settings.SMTP_FROM_NAME
+
+            # ✅ Debug logs
+            logger.info("=" * 80)
+            logger.info(f"[EMAIL] Sending to: {recipient_email}")
             logger.info(f"[EMAIL] Subject: {subject}")
             logger.info(f"[EMAIL] Template: {template_name}")
+            logger.info(f"[EMAIL] From: {smtp_from_name} <{smtp_from_email}>")
+            logger.info(f"[EMAIL] SMTP: {smtp_host}:{smtp_port}")
             logger.info(f"[EMAIL] Content:\n{content}")
-            logger.info("="*80)
-            
-            # Mark as sent
+            logger.info("=" * 80)
+
+            # ✅ Ensure SMTP credentials exist
+            if not (smtp_host and smtp_user and smtp_password):
+                logger.warning("⚠️ SMTP not configured. Email logged but not sent.")
+                email_notification.status = EmailStatus.FAILED.value
+                db.commit()
+                return email_notification
+
+            # ✅ Build email
+            message = MIMEMultipart()
+            message["From"] = f"{smtp_from_name} <{smtp_from_email}>"
+            message["To"] = recipient_email
+            message["Subject"] = subject
+            message.attach(MIMEText(content, "plain"))
+
+            # ✅ Send the email
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()  # Use TLS
+                server.login(smtp_user, smtp_password)
+                server.send_message(message)
+
+            logger.info(f"✅ Email sent successfully to {recipient_email}")
+
+            # ✅ Update DB
             email_notification.status = EmailStatus.SENT.value
             email_notification.sent_at = datetime.now(timezone.utc)
             db.commit()
             db.refresh(email_notification)
-            
+
         except Exception as e:
-            logger.error(f"Failed to send email: {str(e)}")
+            # ❌ Error handling
+            logger.error(f"❌ Failed to send email: {str(e)}")
             email_notification.status = EmailStatus.FAILED.value
             email_notification.error_message = str(e)
             db.commit()
             db.refresh(email_notification)
 
         return email_notification
+
+    # -------------------------
+    # 📩 EMAIL TEMPLATES
+    # -------------------------
 
     @staticmethod
     def send_verification_email(
@@ -80,22 +120,22 @@ class EmailService:
     ) -> EmailNotification:
         """Send email verification link"""
         verification_link = f"{frontend_url}/verify-email/{verification_token}"
-        
+
         content = f"""
         Hello,
-        
+
         Thank you for registering! Please verify your email address by clicking the link below:
-        
+
         {verification_link}
-        
+
         This link will expire in 24 hours.
-        
+
         If you didn't create an account, please ignore this email.
-        
+
         Best regards,
         Your E-commerce Team
         """
-        
+
         return EmailService.send_email(
             db=db,
             recipient_email=recipient_email,
@@ -108,32 +148,30 @@ class EmailService:
     def send_password_reset_email(
         db: Session,
         recipient_email: str,
-        reset_token: str,
-        frontend_url: str = "http://localhost:3000"
+        verification_code: str,
     ) -> EmailNotification:
-        """Send password reset link"""
-        reset_link = f"{frontend_url}/reset-password/{reset_token}"
-        
+        """Send password reset verification code"""
+
         content = f"""
         Hello,
-        
-        We received a request to reset your password. Click the link below to reset it:
-        
-        {reset_link}
-        
-        This link will expire in 1 hour.
-        
-        If you didn't request a password reset, please ignore this email or contact support if you have concerns.
-        
+
+        We received a request to reset your password. Use the verification code below:
+
+        Verification Code: {verification_code}
+
+        This code will expire in 15 minutes.
+
+        If you didn't request a password reset, please ignore this email.
+
         Best regards,
         Your E-commerce Team
         """
-        
+
         return EmailService.send_email(
             db=db,
             recipient_email=recipient_email,
-            subject="Reset Your Password",
-            template_name="password_reset",
+            subject="Password Reset Verification Code",
+            template_name="password_reset_code",
             content=content
         )
 
@@ -143,17 +181,18 @@ class EmailService:
         recipient_email: str
     ) -> EmailNotification:
         """Send notification that password was changed"""
+
         content = """
         Hello,
-        
+
         This email confirms that your password has been successfully changed.
-        
+
         If you didn't make this change, please contact our support team immediately.
-        
+
         Best regards,
         Your E-commerce Team
         """
-        
+
         return EmailService.send_email(
             db=db,
             recipient_email=recipient_email,

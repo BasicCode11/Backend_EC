@@ -30,7 +30,12 @@ class EmailVerificationToken(Base):
     @property
     def is_expired(self) -> bool:
         """Check if token has expired"""
-        return datetime.now(timezone.utc) > self.expires_at
+        now = datetime.now(timezone.utc)
+        # Handle timezone-naive datetime from database
+        expires_at = self.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return now > expires_at
 
     @property
     def is_valid(self) -> bool:

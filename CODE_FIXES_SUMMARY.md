@@ -176,6 +176,11 @@ app.add_middleware(CORSMiddleware, ...)
 5. Added missing back_populates in DiscountApplication model
 6. SQLAlchemy version conflict (already resolved)
 
+✅ **Implemented new feature:**
+- **Password Reset with Email Verification Code** - Secure 3-step flow using 6-digit codes instead of URL tokens
+  - See `PASSWORD_RESET_WITH_CODE_GUIDE.md` for complete documentation
+  - See `PASSWORD_RESET_IMPLEMENTATION_SUMMARY.md` for quick overview
+
 ⚠️ **Noted 3 non-critical issues for review:**
 1. Email verification logic inconsistency
 2. Unused middleware registration import

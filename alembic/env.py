@@ -1,12 +1,26 @@
 import os
 from logging.config import fileConfig
+from urllib.parse import quote_plus
+from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
-# Load environment variables from .env
-load_dotenv()
+# Load environment variables from .env in project root
+# Get the directory of this file (alembic/env.py)
+current_dir = Path(__file__).resolve().parent
+# Go up one level to get project root
+project_root = current_dir.parent
+env_path = project_root / ".env"
+
+# Use dotenv_values to load into a dictionary
+env_vars = dotenv_values(env_path)
+
+# Set environment variables explicitly
+for key, value in env_vars.items():
+    if value is not None:
+        os.environ[key] = value
 
 # Alembic Config object
 config = context.config
@@ -31,10 +45,14 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "3306")
 DB_NAME = os.getenv("DB_NAME")
 
-DATABASE_URL = f"{DB_TYPE}+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# URL-encode the password to handle special characters like @
+encoded_password = quote_plus(DB_PASSWORD) if DB_PASSWORD else ""
+DATABASE_URL = f"{DB_TYPE}+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# Override sqlalchemy.url in config
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# Override sqlalchemy.url in config (escape % for configparser)
+# ConfigParser uses % for interpolation, so we need to escape it
+escaped_url = DATABASE_URL.replace('%', '%%')
+config.set_main_option("sqlalchemy.url", escaped_url)
 
 
 def run_migrations_offline() -> None:

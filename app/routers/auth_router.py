@@ -15,6 +15,8 @@ from app.schemas.auth import (
     UserResponse, 
     CustomerRegistration,
     ForgotPasswordRequest,
+    VerifyResetCodeRequest,
+    VerifyResetCodeResponse,
     ResetPasswordRequest,
     MessageResponse
 )
@@ -161,19 +163,46 @@ def get_current_user_endpoint(user: User = Depends(get_current_user)):
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
-# @limiter.limit("3/hour")  # Max 3 password reset requests per hour
+@limiter.limit("3/hour")  # Max 3 password reset requests per hour
 def forgot_password(request: Request, forgot_req: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    """Request password reset - sends email with reset link"""
-    AuthService.request_password_reset(db = db, email=forgot_req.email )
+    """
+    Request password reset - sends email with 6-digit verification code
+    
+    Flow:
+    1. User enters email
+    2. System sends 6-digit code to email
+    3. User verifies code at /verify-reset-code
+    4. User resets password at /reset-password with returned token
+    """
+    AuthService.request_password_reset(db=db, email=forgot_req.email)
     return MessageResponse(
-        message="If the email exists, a password reset link has been sent"
+        message="If the email exists, a verification code has been sent to your email"
+    )
+
+
+@router.post("/verify-reset-code", response_model=VerifyResetCodeResponse)
+@limiter.limit("5/hour")  # Max 5 verification attempts per hour
+def verify_reset_code(request: Request, verify_req: VerifyResetCodeRequest, db: Session = Depends(get_db)):
+    """
+    Verify the 6-digit code sent to email
+    
+    Returns a reset_token that must be used in /reset-password endpoint
+    """
+    reset_token = AuthService.verify_reset_code(db, verify_req.email, verify_req.code)
+    return VerifyResetCodeResponse(
+        message="Code verified successfully. Use the reset_token to set new password.",
+        reset_token=reset_token
     )
 
 
 @router.post("/reset-password", response_model=MessageResponse)
 @limiter.limit("5/hour")  # Max 5 password reset attempts per hour  
 def reset_password(request: Request, reset_req: ResetPasswordRequest, db: Session = Depends(get_db)):
-    """Reset password using token from email"""
-    AuthService.reset_password(db, reset_req.token, reset_req.new_password)
+    """
+    Reset password using verified reset_token
+    
+    You must first verify your code at /verify-reset-code to get the reset_token
+    """
+    AuthService.reset_password(db, reset_req.reset_token, reset_req.new_password)
     return MessageResponse(message="Password has been reset successfully")
 

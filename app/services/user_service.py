@@ -3,9 +3,11 @@ from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.core.security import hash_password, verify_password
-from app.schemas.user import UserCreate, UserUpdate, UserSearchParams, UserSelfUpdate
+from app.schemas.user import UserCreate, UserUpdate, UserSearchParams, UserSelfUpdate , UserProfileBundle , UserResponse , RoleOut , UserWithPerPage
 from app.core.exceptions import ValidationError, ForbiddenException
 import uuid
+from app.schemas.address import AddressResponse, AddressCreate
+from app.services.address_service import AddressService
 
 class UserService:
     """Service layer for user operations."""
@@ -22,14 +24,13 @@ class UserService:
     @staticmethod
     def get_all(
         db: Session,
-        skip: int = 0,
+        page: int = 1,
         limit: int = 100,
         role_id: Optional[int] = None,
-        email_verified: Optional[bool] = None,
         search_params: Optional[UserSearchParams] = None,
-    ) -> List[User]:
+    ) -> dict:  
         query = db.query(User)
-        
+    
         if search_params:
             if search_params.email:
                 query = query.filter(User.email.ilike(f"%{search_params.email}%"))
@@ -41,14 +42,72 @@ class UserService:
                 query = query.filter(User.role_id == search_params.role_id)
             if search_params.email_verified is not None:
                 query = query.filter(User.email_verified == search_params.email_verified)
-        
+    
         if role_id is not None:
             query = query.filter(User.role_id == role_id)
-        if email_verified is not None:
-            query = query.filter(User.email_verified == email_verified)
-            
-        return query.offset(skip).limit(limit).all()
-
+    
+        total = query.count()
+        users = query.offset((page - 1) * limit).limit(limit).all()
+    
+        # Transform User objects to UserProfileBundle objects
+        user_bundles = []
+        for user in users:
+            role_data = RoleOut(
+                id=user.role.id,
+                name=user.role.name
+            )
+            user_response = UserResponse(
+                id=user.id, 
+                uuid=user.uuid,
+                email=user.email,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                role=role_data,
+                phone=user.phone,
+                picture=user.picture,
+                email_verified=user.email_verified,
+                created_at=user.created_at,
+                updated_at=user.updated_at
+            )
+        
+            # Convert addresses to AddressResponse objects
+            address_responses = []
+            for address in user.addresses:
+                address_response = AddressResponse(
+                    id=address.id,
+                    user_id=address.user_id,
+                    address_type=address.address_type,
+                    label=address.label,
+                    recipient_name=address.recipient_name,
+                    company=address.company,
+                    street_address=address.street_address,
+                    apartment_suite=address.apartment_suite,
+                    city=address.city,
+                    state=address.state,
+                    country=address.country,
+                    postal_code=address.postal_code,
+                    longitude=address.longitude,
+                    latitude=address.latitude,
+                    is_default=address.is_default,
+                    is_active=address.is_active,
+                    created_at=address.created_at,
+                    updated_at=address.updated_at
+                )
+                address_responses.append(address_response)
+        
+            user_bundle = UserProfileBundle(
+                user=user_response,
+                addresses=address_responses
+            )
+            user_bundles.append(user_bundle)
+    
+        return UserWithPerPage(
+            item=user_bundles,
+            total=total,
+            page=page,
+            limit=limit
+        )
+          
     @staticmethod
     def search_users(db: Session, search_params: UserSearchParams) -> List[User]:
         """Search users with various filters"""
@@ -60,7 +119,7 @@ class UserService:
         )
 
     @staticmethod
-    def create(db: Session, user_data: UserCreate, created_by: User) -> User:
+    def create(db: Session, user_data: UserCreate, address_data: AddressCreate, created_by: User) -> User:
         if UserService.get_by_email(db, user_data.email):
             raise ValidationError("Email already exists")
 
@@ -73,12 +132,19 @@ class UserService:
             first_name=user_data.first_name,
             last_name=user_data.last_name,
             phone=user_data.phone,
+            picture=user_data.picture,
             role_id=user_data.role_id,
             email_verified=True  # Admin created users are auto-verified
         )
+        
         db.add(db_user)
         db.commit()
         db.refresh(db_user)
+        
+        # Create address for the user if provided
+        if address_data:
+            AddressService.create_for_user(db, db_user, address_data)
+        
         return db_user
 
     @staticmethod
@@ -104,7 +170,8 @@ class UserService:
         db_user = UserService.get_by_id(db, user_id)
         if not db_user:
             raise ValidationError("User not found")
-
+        if user_data.comfime_password and not verify_password(user_data.comfime_password, db_user.password_hash):
+            raise ValidationError("Current password is incorrect")
         update_data = user_data.dict(exclude_unset=True)
         if "password" in update_data and update_data["password"]:
             update_data["password_hash"] = hash_password(update_data["password"])

@@ -113,6 +113,12 @@ class DataFactory:
             {"name": "system:logs"},
             {"name": "system:backup"},
             {"name": "system:maintenance"},
+
+            #authid log 
+            {"name": "audit_logs:create"},
+            {"name": "audit_logs:read"},
+            {"name": "audit_logs:update"},
+            {"name": "audit_logs:delete"},
         ]
 
     @staticmethod
@@ -207,6 +213,12 @@ class DataFactory:
                     {"name": "system:logs"},
                     {"name": "system:backup"},
                     {"name": "system:maintenance"},
+
+                    #authid log 
+                    {"name": "audit_logs:create"},
+                    {"name": "audit_logs:read"},
+                    {"name": "audit_logs:update"},
+                    {"name": "audit_logs:delete"},
                 ],
             },
             {

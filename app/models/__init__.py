@@ -18,6 +18,7 @@ from .review import Review
 from .discount import Discount, DiscountType, ApplyTo
 from .discount_application import DiscountApplication
 from .email_notification import EmailNotification, EmailStatus
+from .audit_log import AuditLog
 
 __all__ = [
     "User",
@@ -48,4 +49,5 @@ __all__ = [
     "DiscountApplication",
     "EmailNotification",
     "EmailStatus",
+    "AuditLog",
 ]

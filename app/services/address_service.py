@@ -15,9 +15,9 @@ class AddressService:
         return db.execute(stmt).scalars().all()
 
     @staticmethod
-    def get_for_user(db: Session, user_id: int, address_id: int) -> Optional[UserAddress]:
+    def get_for_user(db: Session, user_id: int) -> Optional[UserAddress]:
         stmt = select(UserAddress).where(
-            (UserAddress.user_id == user_id) & (UserAddress.id == address_id)
+            UserAddress.user_id == user_id
         )
         return db.execute(stmt).scalars().first()
 
@@ -27,6 +27,8 @@ class AddressService:
         user_id = user.id if isinstance(user, User) else user
         if not user_id:
             raise ValidationError("User not found")
+        if AddressService.list_for_user(db, user_id):
+            raise ValidationError("User already has an address")
         
         payload = data.model_dump()
         if payload.get("is_default"):
@@ -43,15 +45,10 @@ class AddressService:
         return address
 
     @staticmethod
-    def update_for_user(db: Session, user_id: int, address_id: int, data: AddressUpdate) -> UserAddress:
+    def update_for_user(db: Session, user_id: int, data: AddressUpdate) -> UserAddress:
         """Update address for a user. If address_id is None, update by user_id (for single address)"""
-        if address_id is None:
-            # Update first address for user (for /me/addresses PUT endpoint)
-            stmt = select(UserAddress).where(UserAddress.user_id == user_id).limit(1)
-            address = db.execute(stmt).scalars().first()
-        else:
-            address = AddressService.get_for_user(db, user_id, address_id)
-            
+        
+        address = AddressService.get_for_user(db, user_id)
         if not address:
             raise ValidationError("Address not found")
 
