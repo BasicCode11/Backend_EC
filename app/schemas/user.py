@@ -41,7 +41,7 @@ class UserResponse(BaseModel):
     email: str
     first_name: str
     last_name: str
-    role: RoleOut
+    role: Optional[RoleOut] = None
     phone: Optional[str] = None
     picture: Optional[str] = None
     email_verified: bool
@@ -62,7 +62,11 @@ class UserProfileBundle(BaseModel):
 
 class UserWithAddressCreate(BaseModel):
     user: UserCreate
-    address: AddressCreate
+    addresses: List[AddressResponse]
+
+    class Config:
+        from_attributes = True
+
 
 class UserSearchParams(BaseModel):
     email: Optional[str] = None

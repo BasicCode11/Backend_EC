@@ -1,6 +1,6 @@
-from typing import List, Optional
-from sqlalchemy import select, or_
-from sqlalchemy.orm import Session
+from typing import List, Optional 
+from sqlalchemy import select, or_  
+from sqlalchemy.orm import Session , selectinload
 from app.models.user import User
 from app.core.security import hash_password, verify_password
 from app.schemas.user import UserCreate, UserUpdate, UserSearchParams, UserSelfUpdate , UserProfileBundle , UserResponse , RoleOut , UserWithPerPage
@@ -21,6 +21,17 @@ class UserService:
     @staticmethod
     def get_by_id(db: Session, user_id: int) -> Optional[User]:
         return db.get(User, user_id)
+    
+    @staticmethod
+    def get_with_addresses(db: Session, user_id: int) -> Optional[User]:
+        stmt = (
+            select(User)
+            .where(User.id == user_id)
+            .options(selectinload(User.addresses))
+        )
+        return db.execute(stmt).scalars().first()
+
+    
 
     @staticmethod
     def get_all(
@@ -109,15 +120,7 @@ class UserService:
             limit=limit
         )
           
-    @staticmethod
-    def search_users(db: Session, search_params: UserSearchParams) -> List[User]:
-        """Search users with various filters"""
-        return UserService.get_all(
-            db=db,
-            skip=search_params.skip,
-            limit=search_params.limit,
-            search_params=search_params
-        )
+
 
     @staticmethod
     def create(db: Session, user_data: UserCreate, address_data: AddressCreate, created_by: User , picture: Optional[str] = None) -> User:
@@ -257,39 +260,3 @@ class UserService:
             old_values=old_values
         )
 
-
-    @staticmethod
-    def authenticate(db: Session, email: str, password: str) -> Optional[User]:
-        user = UserService.get_by_email(db, email)
-        if not user or not verify_password(password, user.password_hash):
-            return None
-        return user
-
-    @staticmethod
-    def change_password(db: Session, user: User, current_password: str, new_password: str) -> bool:
-        db_user = UserService.get_by_id(db, user.id)
-        if not db_user or not verify_password(current_password, db_user.password_hash):
-            raise ValidationError("Current password is incorrect")
-
-        db_user.password_hash = hash_password(new_password)
-        db.commit()
-        db.refresh(db_user)
-        return True
-
-    @staticmethod
-    def reset_password(db: Session, user_id: int, new_password: str) -> bool:
-        user = UserService.get_by_id(db, user_id)
-        if not user:
-            raise ValidationError("User not found")
-
-        user.password_hash = hash_password(new_password)
-        db.commit()
-        db.refresh(user)
-        return True
-
-    @staticmethod
-    def get_user_count(db: Session, email_verified: Optional[bool] = None) -> int:
-        query = db.query(User)
-        if email_verified is not None:
-            query = query.filter(User.email_verified == email_verified)
-        return query.count()

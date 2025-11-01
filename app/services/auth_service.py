@@ -81,6 +81,11 @@ class AuthService:
 
     @staticmethod
     def register_customer(db: Session, customer_data: CustomerRegistration, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> User:
+        if not customer_data.email.lower().endswith("@gmail.com"):
+            raise HTTPException(
+                status_code=400,
+                detail="Registration is allowed only for Gmail accounts."
+            )
         existing_user = db.query(User).filter(User.email == customer_data.email).first()
         if existing_user:
             raise HTTPException(status_code=400, detail="Email already registered")
@@ -104,35 +109,48 @@ class AuthService:
             email_verified=True 
         )
         db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
+        db.flush()
+        try:
+            # Generate verification token and send email
+            
+            EmailService.send_verification_email(
+                db=db,
+                recipient_email=new_user.email,
+            )
+
+            db.commit()
+            db.refresh(new_user)
+            # Log user registration
+            AuditLogService.log_create(
+                db=db,
+                user_id=None,  # Self-registration, no authenticated user
+                entity_type="User",
+                entity_id=new_user.id,
+                entity_uuid=new_user.uuid,
+                new_values={
+                    "email": new_user.email,
+                    "first_name": new_user.first_name,
+                    "last_name": new_user.last_name,
+                    "role": "customer"
+                },
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            return new_user
         
-        # Log user registration
-        AuditLogService.log_create(
-            db=db,
-            user_id=None,  # Self-registration, no authenticated user
-            entity_type="User",
-            entity_id=new_user.id,
-            entity_uuid=new_user.uuid,
-            new_values={
-                "email": new_user.email,
-                "first_name": new_user.first_name,
-                "last_name": new_user.last_name,
-                "role": "customer"
-            },
-            ip_address=ip_address,
-            user_agent=user_agent
-        )
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to send verification email. Registration canceled. ({str(e)})"
+            )
+       
         
-        # Generate verification token and send email
-        verification_token = AuthService.generate_verification_token(db, new_user)
-        EmailService.send_verification_email(
-            db=db,
-            recipient_email=new_user.email,
-            verification_token=verification_token.token
-        )
         
-        return new_user
+        
+        
+        
+        
 
     @staticmethod
     def logout_user(db: Session, token_data: TokenData, ip_address: Optional[str] = None, user_agent: Optional[str] = None):

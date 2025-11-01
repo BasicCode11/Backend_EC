@@ -7,6 +7,7 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -115,34 +116,38 @@ class EmailService:
     def send_verification_email(
         db: Session,
         recipient_email: str,
-        verification_token: str,
         frontend_url: str = "http://localhost:3000"
     ) -> EmailNotification:
         """Send email verification link"""
-        verification_link = f"{frontend_url}/verify-email/{verification_token}"
+        verification_link = f"{frontend_url}"
 
         content = f"""
-        Hello,
+        Hello! I'm from Vortex store 😍,
 
-        Thank you for registering! Please verify your email address by clicking the link below:
+        Thank you for registering! ! You can login to my store and buy whatever you want!
 
         {verification_link}
 
-        This link will expire in 24 hours.
+        This link will open web store .
 
-        If you didn't create an account, please ignore this email.
-
-        Best regards,
-        Your E-commerce Team
+        Thank you and happy shopping! 🛍️
         """
 
-        return EmailService.send_email(
-            db=db,
-            recipient_email=recipient_email,
-            subject="Verify Your Email Address",
-            template_name="email_verification",
-            content=content
-        )
+        try: 
+            email_notification = EmailService.send_email(
+                db=db,
+                recipient_email=recipient_email,
+                subject="Verify Your Email Address",
+                template_name="email_verification",
+                content=content
+            )
+            return email_notification
+        except Exception as e:
+            # If sending fails (SMTP down, invalid email, etc.)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to send verification email: {str(e)}"
+            )
 
     @staticmethod
     def send_password_reset_email(

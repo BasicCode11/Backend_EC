@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from app.models.role import Role
 from app.models.permission import Permission
 from app.models.role_has_permision import role_has_permission
-
+from app.services.audit_log_service import AuditLogService
+from app.models.user import User
 class RoleService:
     """Service layer for role operations."""
     @staticmethod
@@ -26,7 +27,7 @@ class RoleService:
     
 
     @staticmethod
-    def create(db: Session, name: str, description: Optional[str] = None) -> Role:
+    def create(db: Session,  current_user: User,name: str, description: Optional[str] = None) -> Role:
         """Create a new role."""
         existing = db.execute(select(Role).where(Role.name == name)).scalars().first()
         if existing:
@@ -36,15 +37,38 @@ class RoleService:
         db.add(role)
         db.commit()
         db.refresh(role)
+
+        #audit log data 
+        AuditLogService.log_create(
+            db=db,
+            user_id=current_user.id,
+            entity_type="Role",
+            entity_id=role.id,
+            new_values={
+                "name": role.name,
+                "description": role.description
+            }
+        )
         return role
     
     @staticmethod
-    def update(db: Session, role_id: int, name: str, description: Optional[str] = None) -> Optional[Role]:
+    def update(db: Session, role_id: int, current_user: User,name: str, description: Optional[str] = None) -> Optional[Role]:
         """Update an existing role."""
         role = db.get(Role, role_id)
         if not role:
             return None
         
+        #auth log old data 
+        old_values = {
+            "name": role.name,
+            "description": role.description
+        }
+
+        #audit log new data 
+        new_values = {
+            "name": name,
+            "description": description
+        }
         if name is not None:
             role.name = name
         if description is not None:
@@ -52,17 +76,38 @@ class RoleService:
 
         db.commit()
         db.refresh(role)
+
+        AuditLogService.log_update(
+            db=db,
+            user_id=current_user.id,
+            entity_type="Role",
+            entity_id=role.id,
+            old_values=old_values,
+            new_values=new_values
+        )
         return role
     
     @staticmethod
-    def delete(db: Session, role_id: int) -> bool:
+    def delete(db: Session, role_id: int , current_user: User) -> bool:
         """Delete a role."""
         role = db.get(Role, role_id)
         if not role:
             return
         
+        #auth log old data 
+        AuditLogService.log_delete(
+            db=db,
+            user_id=current_user.id,
+            entity_type="Role",
+            entity_id=role.id,
+            old_values={
+                "name": role.name,
+                "description": role.description
+            }
+        )
         db.delete(role)
         db.commit()
+
     
     @staticmethod
     def assign_permissions(db: Session, role_id: int, permission_ids: List[int]) -> bool:

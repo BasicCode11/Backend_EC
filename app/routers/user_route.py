@@ -12,6 +12,7 @@ from app.schemas.user import (
     UserSelfUpdate,
     UserProfileBundle,
     UserWithPerPage,
+    UserWithAddressCreate
 )
 from app.schemas.address import AddressCreate, AddressUpdate, AddressResponse
 from app.services.address_service import AddressService
@@ -79,17 +80,44 @@ def read_users(
     )
 
 
-@router.get("/user/{user_id}", response_model=UserWithRelations)
+@router.get("/user/{user_id}", response_model=UserProfileBundle)
 def read_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["users:read"])),
+    current_user: User = Depends(require_permission(["users:read"]))
 ):
-    """Get user by ID - requires users:read permission"""
-    user = UserService.get_by_id(db, user_id)
+    """Get user by ID with addresses - requires users:read permission"""
+    user = UserService.get_with_addresses(db, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Manually construct RoleOut from user.role
+    from app.schemas.user import RoleOut
+    role_data = RoleOut(
+        id=user.role.id,
+        name=user.role.name
+    ) if user.role else None
+    
+    # Construct UserResponse with the role data
+    user_response = UserResponse(
+        id=user.id,
+        uuid=user.uuid,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        role=role_data,
+        phone=user.phone,
+        picture=user.picture,
+        email_verified=user.email_verified,
+        created_at=user.created_at,
+        updated_at=user.updated_at
+    )
+
+    return {
+        "user": user_response,
+        "addresses": [AddressResponse.from_orm(a) for a in user.addresses]
+    }
+
 
 
 @router.post("/user", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -238,71 +266,3 @@ def delete_user(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.post("/user/search", response_model=List[UserWithRelations])
-def search_users(
-    search_params: UserSearchParams,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["users:read"])),
-):
-    """Search users with various filters - requires users:read permission"""
-    return UserService.search_users(db, search_params)
-
-
-@router.get("/user/stats/count")
-def get_user_count(
-    email_verified: Optional[bool] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["users:read"])),
-):
-    """Count users - requires users:read permission"""
-    count = UserService.get_user_count(db, email_verified)
-    return {"count": count, "email_verified": email_verified}
-
-
-# Admin manage user addresses
-@router.get("/user/{user_id}/addresses", response_model=List[AddressResponse])
-def admin_list_user_addresses(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["users:read"]))
-):
-    """List all addresses for a specific user - requires users:read permission"""
-    return AddressService.list_for_user(db, user_id)
-
-
-@router.post("/user/{user_id}/addresses", response_model=AddressResponse, status_code=status.HTTP_201_CREATED)
-def admin_create_user_address(
-    user_id: int,
-    data: AddressCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["users:update"]))
-):
-    """Create address for a specific user - requires users:update permission"""
-    user = UserService.get_by_id(db, user_id)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return AddressService.create_for_user(db, user_id, data)
-
-
-@router.put("/user/{user_id}/addresses/{address_id}", response_model=AddressResponse)
-def admin_update_user_address(
-    user_id: int,
-    address_id: int,
-    data: AddressUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["users:update"]))
-):
-    """Update address for a specific user - requires users:update permission"""
-    return AddressService.update_for_user(db, user_id, address_id, data)
-
-
-@router.delete("/user/{user_id}/addresses/{address_id}")
-def admin_delete_user_address(
-    user_id: int,
-    address_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["users:delete"]))
-):
-    """Delete address for a specific user - requires users:delete permission"""
-    AddressService.delete_for_user(db, user_id, address_id)
-    return {"message": "Address deleted successfully"}
