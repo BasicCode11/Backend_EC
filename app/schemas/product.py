@@ -108,6 +108,14 @@ class ProductUpdate(BaseModel):
     status: Optional[ProductStatus] = None
 
 
+class CategorySimple(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
 class ProductResponse(BaseModel):
     id: int
     name: str
@@ -116,11 +124,13 @@ class ProductResponse(BaseModel):
     compare_price: Optional[Decimal] = None
     cost_price: Optional[Decimal] = None
     category_id: int
+    category: Optional[CategorySimple] = None
     brand: Optional[str] = None
     weight: Optional[Decimal] = None
     dimensions: Optional[Dict[str, Any]] = None
     featured: bool
     status: str
+    primary_image: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

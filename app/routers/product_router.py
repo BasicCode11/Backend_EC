@@ -1,7 +1,9 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query , Request
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from math import ceil
+from decimal import Decimal
+import json
 from app.database import get_db
 from app.models.user import User
 from app.schemas.product import (
@@ -19,10 +21,97 @@ from app.schemas.product import (
     ProductStatus
 )
 from app.services.product_service import ProductService
+from app.services.file_service import LogoUpload
 from app.deps.auth import get_current_active_user, require_permission
 from app.core.exceptions import ValidationError
 
 router = APIRouter()
+
+
+def transform_product_with_primary_image(product):
+    """Helper function to transform product with primary image and category"""
+    from app.schemas.product import ProductResponse, CategorySimple
+    
+    # Get primary image URL
+    primary_img = None
+    if product.images:
+        for img in product.images:
+            if img.is_primary:
+                primary_img = img.image_url
+                break
+        if not primary_img and product.images:
+            primary_img = product.images[0].image_url
+    
+    # Create category object
+    category_obj = None
+    if product.category:
+        category_obj = CategorySimple(
+            id=product.category.id,
+            name=product.category.name
+        )
+    
+    return ProductResponse(
+        id=product.id,
+        name=product.name,
+        description=product.description,
+        price=product.price,
+        compare_price=product.compare_price,
+        cost_price=product.cost_price,
+        category_id=product.category_id,
+        category=category_obj,
+        brand=product.brand,
+        weight=product.weight,
+        dimensions=product.dimensions,
+        featured=product.featured,
+        status=product.status,
+        primary_image=primary_img,
+        created_at=product.created_at,
+        updated_at=product.updated_at
+    )
+
+
+def transform_product_with_details(product):
+    """Helper function to transform product with full details including images and variants"""
+    from app.schemas.product import ProductWithDetails, CategorySimple, ProductImageResponse, ProductVariantResponse
+    
+    # Get primary image URL
+    primary_img = None
+    if product.images:
+        for img in product.images:
+            if img.is_primary:
+                primary_img = img.image_url
+                break
+        if not primary_img and product.images:
+            primary_img = product.images[0].image_url
+    
+    # Create category object
+    category_obj = None
+    if product.category:
+        category_obj = CategorySimple(
+            id=product.category.id,
+            name=product.category.name
+        )
+    
+    return ProductWithDetails(
+        id=product.id,
+        name=product.name,
+        description=product.description,
+        price=product.price,
+        compare_price=product.compare_price,
+        cost_price=product.cost_price,
+        category_id=product.category_id,
+        category=category_obj,
+        brand=product.brand,
+        weight=product.weight,
+        dimensions=product.dimensions,
+        featured=product.featured,
+        status=product.status,
+        primary_image=primary_img,
+        created_at=product.created_at,
+        updated_at=product.updated_at,
+        images=[ProductImageResponse.model_validate(img) for img in product.images],
+        variants=[ProductVariantResponse.model_validate(v) for v in product.variants]
+    )
 
 
 @router.get("/products", response_model=ProductListResponse)
@@ -42,6 +131,8 @@ def list_products(
     - **status**: Filter by product status (active, inactive, draft)
     - **category_id**: Filter by category ID
     - **featured**: Filter by featured status
+    
+    Returns products with primary_image and category object.
     """
     skip = (page - 1) * limit
     status_value = status.value if status else None
@@ -57,8 +148,11 @@ def list_products(
     
     pages = ceil(total / limit) if total > 0 else 0
     
+    # Transform products to include primary_image and category
+    items = [transform_product_with_primary_image(p) for p in products]
+    
     return {
-        "items": products,
+        "items": items,
         "total": total,
         "page": page,
         "limit": limit,
@@ -89,8 +183,11 @@ def search_products(
     products, total = ProductService.search(db, params)
     pages = ceil(total / params.limit) if total > 0 else 0
     
+    # Transform products to include primary_image and category
+    items = [transform_product_with_primary_image(p) for p in products]
+    
     return {
-        "items": products,
+        "items": items,
         "total": total,
         "page": params.page,
         "limit": params.limit,
@@ -103,9 +200,9 @@ def list_featured_products(
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
-    """Get featured products"""
+    """Get featured products with primary image and category"""
     products = ProductService.get_featured_products(db, limit)
-    return products
+    return [transform_product_with_primary_image(p) for p in products]
 
 
 @router.get("/products/by-category/{category_id}", response_model=List[ProductResponse])
@@ -114,9 +211,9 @@ def list_products_by_category(
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    """Get products by category"""
+    """Get products by category with primary image and category"""
     products = ProductService.get_by_category(db, category_id, limit)
-    return products
+    return [transform_product_with_primary_image(p) for p in products]
 
 
 @router.get("/products/stats/count")
@@ -144,28 +241,123 @@ def get_product(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Product not found"
         )
-    return product
+    
+    return transform_product_with_details(product)
 
 
 @router.post("/products", response_model=ProductWithDetails, status_code=status.HTTP_201_CREATED)
 def create_product(
     request: Request,
-    product_data: ProductCreate,
+    name: str = Form(...),
+    price: Decimal = Form(...),
+    category_id: int = Form(...),
+    description: Optional[str] = Form(None),
+    compare_price: Optional[Decimal] = Form(None),
+    cost_price: Optional[Decimal] = Form(None),
+    brand: Optional[str] = Form(None),
+    weight: Optional[Decimal] = Form(None),
+    dimensions: Optional[str] = Form(None),
+    featured: bool = Form(False),
+    status: str = Form("active"),
+    variants: Optional[str] = Form(None),
+    images: List[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:create"]))
 ):
     """
     Create a new product - requires products:create permission.
     
-    Can include images and variants in the request body.
+    Accepts multipart/form-data with:
+    - Basic product fields
+    - Multiple image file uploads
+    - dimensions as JSON string (optional)
+    - variants as JSON array string (optional)
+    
+    Example variants JSON:
+    [
+      {
+        "sku": "PROD-RED-M",
+        "variant_name": "Red - Medium",
+        "attributes": {"color": "Red", "size": "M"},
+        "price": 29.99,
+        "stock_quantity": 50,
+        "sort_order": 0
+      }
+    ]
     """
     ip_address = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.headers.get("X-Real-IP", "") or (request.client.host if request.client else None)
     user_agent = request.headers.get("User-Agent")
+    
     try:
-        product = ProductService.create(db, product_data , current_user , ip_address , user_agent)
+        # Parse dimensions JSON if provided
+        dimensions_dict = None
+        if dimensions:
+            try:
+                dimensions_dict = json.loads(dimensions)
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for dimensions")
+        
+        # Parse variants JSON if provided
+        variant_data_list = []
+        if variants:
+            try:
+                variants_list = json.loads(variants)
+                if not isinstance(variants_list, list):
+                    raise ValidationError("Variants must be a JSON array")
+                
+                for variant_item in variants_list:
+                    variant_data_list.append(
+                        ProductVariantCreate(
+                            sku=variant_item.get("sku"),
+                            variant_name=variant_item.get("variant_name"),
+                            attributes=variant_item.get("attributes"),
+                            price=variant_item.get("price"),
+                            stock_quantity=variant_item.get("stock_quantity", 0),
+                            image_url=variant_item.get("image_url"),
+                            sort_order=variant_item.get("sort_order", 0)
+                        )
+                    )
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for variants")
+            except Exception as e:
+                raise ValidationError(f"Error parsing variants: {str(e)}")
+        
+        # Upload images and create image data
+        image_data_list = []
+        if images:
+            for idx, image_file in enumerate(images):
+                if image_file.filename:  # Check if file is actually uploaded
+                    image_url = LogoUpload._save_image(image_file)
+                    image_data_list.append(
+                        ProductImageCreate(
+                            image_url=image_url,
+                            alt_text=f"{name} image {idx + 1}",
+                            sort_order=idx,
+                            is_primary=(idx == 0)  # First image is primary
+                        )
+                    )
+        
+        # Create product data object
+        product_data = ProductCreate(
+            name=name,
+            description=description,
+            price=price,
+            compare_price=compare_price,
+            cost_price=cost_price,
+            category_id=category_id,
+            brand=brand,
+            weight=weight,
+            dimensions=dimensions_dict,
+            featured=featured,
+            status=ProductStatus(status),
+            images=image_data_list,
+            variants=variant_data_list
+        )
+        
+        product = ProductService.create(db, product_data, current_user, ip_address, user_agent)
         # Reload with details
         product = ProductService.get_with_details(db, product.id)
-        return product
+        return transform_product_with_details(product)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -175,8 +367,19 @@ def create_product(
 
 @router.put("/products/{product_id}", response_model=ProductResponse)
 def update_product(
+    request: Request,
     product_id: int,
-    product_data: ProductUpdate,
+    name: Optional[str] = Form(None),
+    price: Optional[Decimal] = Form(None),
+    category_id: Optional[int] = Form(None),
+    description: Optional[str] = Form(None),
+    compare_price: Optional[Decimal] = Form(None),
+    cost_price: Optional[Decimal] = Form(None),
+    brand: Optional[str] = Form(None),
+    weight: Optional[Decimal] = Form(None),
+    dimensions: Optional[str] = Form(None),
+    featured: Optional[bool] = Form(None),
+    status: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:update"]))
 ):
@@ -184,9 +387,35 @@ def update_product(
     Update a product - requires products:update permission.
     
     All fields are optional. Only provided fields will be updated.
+    Accepts multipart/form-data.
     """
+    ip_address = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.headers.get("X-Real-IP", "") or (request.client.host if request.client else None)
+    user_agent = request.headers.get("User-Agent")
     try:
-        product = ProductService.update(db, product_id, product_data)
+        # Parse dimensions JSON if provided
+        dimensions_dict = None
+        if dimensions:
+            try:
+                dimensions_dict = json.loads(dimensions)
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for dimensions")
+        
+        # Create update data object
+        product_data = ProductUpdate(
+            name=name,
+            description=description,
+            price=price,
+            compare_price=compare_price,
+            cost_price=cost_price,
+            category_id=category_id,
+            brand=brand,
+            weight=weight,
+            dimensions=dimensions_dict,
+            featured=featured,
+            status=ProductStatus(status) if status else None
+        )
+        
+        product = ProductService.update(db, product_id, product_data, current_user, ip_address, user_agent)
         if not product:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -202,6 +431,7 @@ def update_product(
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_200_OK)
 def delete_product(
+    request: Request,
     product_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:delete"]))
@@ -211,8 +441,10 @@ def delete_product(
     
     Note: Cannot delete products with existing orders.
     """
+    ip_address = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.headers.get("X-Real-IP", "") or (request.client.host if request.client else None)
+    user_agent = request.headers.get("User-Agent")
     try:
-        success = ProductService.delete(db, product_id)
+        success = ProductService.delete(db, product_id , current_user , ip_address , user_agent)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -230,14 +462,32 @@ def delete_product(
 @router.post("/products/{product_id}/images", response_model=ProductImageResponse, status_code=status.HTTP_201_CREATED)
 def add_product_image(
     product_id: int,
-    image_data: ProductImageCreate,
+    image: UploadFile = File(...),
+    alt_text: Optional[str] = Form(None),
+    sort_order: int = Form(0),
+    is_primary: bool = Form(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:update"]))
 ):
-    """Add an image to a product - requires products:update permission"""
+    """
+    Add an image to a product - requires products:update permission.
+    
+    Upload an image file with optional metadata.
+    """
     try:
-        image = ProductService.add_image(db, product_id, image_data)
-        return image
+        # Upload the image file
+        image_url = LogoUpload._save_image(image)
+        
+        # Create image data
+        image_data = ProductImageCreate(
+            image_url=image_url,
+            alt_text=alt_text,
+            sort_order=sort_order,
+            is_primary=is_primary
+        )
+        
+        image_record = ProductService.add_image(db, product_id, image_data)
+        return image_record
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -29,7 +29,10 @@ class ProductService:
         featured: Optional[bool] = None
     ) -> Tuple[List[Product], int]:
         """Get all products with optional filters"""
-        query = select(Product)
+        query = select(Product).options(
+            selectinload(Product.category),
+            selectinload(Product.images)
+        )
 
         if status:
             query = query.where(Product.status == status)
@@ -51,7 +54,10 @@ class ProductService:
     @staticmethod
     def search(db: Session, params: ProductSearchParams) -> Tuple[List[Product], int]:
         """Search products with advanced filters"""
-        query = select(Product)
+        query = select(Product).options(
+            selectinload(Product.category),
+            selectinload(Product.images)
+        )
 
         # Text search
         if params.search:
@@ -196,12 +202,23 @@ class ProductService:
         return db_product
 
     @staticmethod
-    def update(db: Session, product_id: int, product_data: ProductUpdate) -> Optional[Product]:
+    def update(db: Session, product_id: int, product_data: ProductUpdate , current_user: User , ip_address: str , user_agent: str) -> Optional[Product]:
         """Update a product"""
         db_product = ProductService.get_by_id(db, product_id)
         if not db_product:
             return None
-
+        old_values = {
+            "name": db_product.name,
+            "description": db_product.description,
+            "price": float(db_product.price) if db_product.price else None,
+            "compare_price": float(db_product.compare_price) if db_product.compare_price else None,
+            "cost_price": float(db_product.cost_price) if db_product.cost_price else None,
+            "category_id": db_product.category_id,
+            "brand": db_product.brand,
+            "weight": float(db_product.weight) if db_product.weight else None,
+            "featured": db_product.featured,
+            "status": db_product.status
+        }
         # Validate category if being updated
         if product_data.category_id:
             category = db.get(Category, product_data.category_id)
@@ -218,21 +235,70 @@ class ProductService:
 
         db.commit()
         db.refresh(db_product)
+
+        new_values = {
+            "name": db_product.name,
+            "description": db_product.description,
+            "price": float(db_product.price) if db_product.price else None,
+            "compare_price": float(db_product.compare_price) if db_product.compare_price else None,
+            "cost_price": float(db_product.cost_price) if db_product.cost_price else None,
+            "category_id": db_product.category_id,
+            "brand": db_product.brand,
+            "weight": float(db_product.weight) if db_product.weight else None,
+            "featured": db_product.featured,
+            "status": db_product.status,
+        }
+        
+        AuditLogService.log_update(
+            db=db,
+            user_id=current_user.id,
+            ip_address=ip_address,
+            entity_uuid=current_user.uuid,
+            user_agent=user_agent,
+            entity_id=db_product.id,
+            entity_type="Product",
+            old_values=old_values,
+            new_values=new_values,
+            
+        )
         return db_product
 
     @staticmethod
-    def delete(db: Session, product_id: int) -> bool:
+    def delete(db: Session, product_id: int , current_user: User , ip_address: str , user_agent: str) -> bool:
         """Delete a product"""
         db_product = ProductService.get_by_id(db, product_id)
+
         if not db_product:
             return False
-
+        
+        old_values = {
+            "name": db_product.name,
+            "description": db_product.description,
+            "price": float(db_product.price) if db_product.price else None,
+            "compare_price": float(db_product.compare_price) if db_product.compare_price else None,
+            "cost_price": float(db_product.cost_price) if db_product.cost_price else None,
+            "category_id": db_product.category_id,
+            "brand": db_product.brand,
+            "weight": float(db_product.weight) if db_product.weight else None,
+            "featured": db_product.featured,
+            "status": db_product.status
+        }
         # Check if product has orders
         if len(db_product.order_items) > 0:
             raise ValidationError("Cannot delete product with existing orders")
 
         db.delete(db_product)
         db.commit()
+        AuditLogService.log_delete(
+            db=db,
+            user_id=current_user.id,
+            ip_address=ip_address,
+            entity_uuid=current_user.uuid,
+            user_agent=user_agent,
+            old_values=old_values,
+            entity_id=db_product.id,
+            entity_type="Product"
+        )
         return True
 
     @staticmethod
@@ -327,6 +393,10 @@ class ProductService:
         """Get featured products"""
         stmt = (
             select(Product)
+            .options(
+                selectinload(Product.category),
+                selectinload(Product.images)
+            )
             .where(Product.featured == True)
             .where(Product.status == ProductStatus.ACTIVE.value)
             .order_by(desc(Product.created_at))
@@ -339,6 +409,10 @@ class ProductService:
         """Get products by category"""
         stmt = (
             select(Product)
+            .options(
+                selectinload(Product.category),
+                selectinload(Product.images)
+            )
             .where(Product.category_id == category_id)
             .where(Product.status == ProductStatus.ACTIVE.value)
             .order_by(desc(Product.created_at))
