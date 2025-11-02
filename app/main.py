@@ -5,9 +5,11 @@ from slowapi import _rate_limit_exceeded_handler , Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from fastapi.staticfiles import StaticFiles
+from apscheduler.schedulers.background import BackgroundScheduler
 import os 
+
 from .core.config import settings
-from .database import Base, engine
+from .database import Base, engine, SessionLocal
 from .core.middleware import  register_middlewares 
 from .routers.role_router import router as role_router
 from .routers.permission_router import router as permission_router
@@ -16,7 +18,9 @@ from .routers.auth_router import router as auth_router
 from .routers.audit_log_router import router as audit_log_router
 from .routers.category_router import router as category_router
 from .routers.product_router import router as product_router
-
+from .routers.inventory_router import router as inventory_router
+from .routers.telegram_router import router as telegram_router
+from app.services.inventory_alert_service import InventoryAlertService
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
@@ -54,7 +58,31 @@ app.include_router(permission_router, prefix="/api", tags=["Permissions"])
 app.include_router(audit_log_router, prefix="/api", tags=["Audit Logs"])
 app.include_router(category_router, prefix="/api", tags=["Categories"])
 app.include_router(product_router, prefix="/api", tags=["Products"])
+app.include_router(inventory_router, prefix="/api", tags=["Inventory"])
+app.include_router(telegram_router, prefix="/api/alerts", tags=["Inventory Alerts"])
 
 @app.get("/", tags=["health"])
 def health():
     return {"status": "ok"}
+
+
+# ==============================
+# 🕒 Weekly Inventory Alert Scheduler
+# ==============================
+def send_weekly_inventory_alerts():
+    """Automatically send weekly inventory alerts."""
+    db = SessionLocal()
+    try:
+        InventoryAlertService.send_daily_report(db)
+        print("✅ Weekly inventory alert sent successfully.")
+    except Exception as e:
+        print(f"❌ Error sending weekly alert: {str(e)}")
+    finally:
+        db.close()
+
+
+scheduler = BackgroundScheduler()
+# Every Sunday at 9:00 AM
+scheduler.add_job(send_weekly_inventory_alerts, "cron", day_of_week="sun", hour=9, minute=0)
+scheduler.start()
+print("📅 Weekly inventory alert scheduler started (Every Sunday 9AM)")

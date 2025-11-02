@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = Field(..., env="SMTP_FROM_EMAIL")
     SMTP_FROM_NAME: str = Field(default="E-commerce Platform", env="SMTP_FROM_NAME")
 
+    # Telegram Bot Configuration
+    TELEGRAM_BOT_TOKEN: str = Field(default="", env="TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID: str = Field(default="", env="TELEGRAM_CHAT_ID")
+    TELEGRAM_ALERTS_ENABLED: bool = Field(default=False, env="TELEGRAM_ALERTS_ENABLED")
+
     @property
     def web_inactivity_timeout(self) -> timedelta:
         return timedelta(minutes=self.WEB_INACTIVITY_TIMEOUT_MINUTES)

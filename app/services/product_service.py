@@ -15,6 +15,7 @@ from app.schemas.product import (
 )
 from app.core.exceptions import ValidationError
 from app.services.audit_log_service import AuditLogService
+from app.services.file_service import LogoUpload
 
 class ProductService:
     """Service layer for product operations."""
@@ -170,7 +171,6 @@ class ProductService:
                     variant_name=variant_data.variant_name,
                     attributes=variant_data.attributes,
                     price=variant_data.price,
-                    stock_quantity=variant_data.stock_quantity,
                     image_url=variant_data.image_url,
                     sort_order=variant_data.sort_order if variant_data.sort_order else idx
                 )
@@ -286,9 +286,18 @@ class ProductService:
         # Check if product has orders
         if len(db_product.order_items) > 0:
             raise ValidationError("Cannot delete product with existing orders")
+        
+        if len(db_product.variants) > 0:
+            raise ValidationError("Cannot Delete Product whit existing variants")
+        
+        # Delete product images from filesystem before deleting from database
+        for image in db_product.images:
+            LogoUpload._delete_logo(image.image_url)
 
         db.delete(db_product)
         db.commit()
+
+        
         AuditLogService.log_delete(
             db=db,
             user_id=current_user.id,
@@ -341,10 +350,22 @@ class ProductService:
 
     @staticmethod
     def add_variant(db: Session, product_id: int, variant_data: ProductVariantCreate) -> ProductVariant:
-        """Add a variant to a product"""
+        """
+        Add a variant to a product.
+        
+        NOTE: Stock is NOT managed here. Use Inventory endpoints to manage stock.
+        """
         product = ProductService.get_by_id(db, product_id)
         if not product:
             raise ValidationError("Product not found")
+
+        # Check for duplicate SKU if provided
+        if variant_data.sku:
+            existing_variant = db.query(ProductVariant).filter(
+                ProductVariant.sku == variant_data.sku
+            ).first()
+            if existing_variant:
+                raise ValidationError(f"SKU '{variant_data.sku}' already exists")
 
         db_variant = ProductVariant(
             product_id=product_id,
@@ -352,7 +373,6 @@ class ProductService:
             variant_name=variant_data.variant_name,
             attributes=variant_data.attributes,
             price=variant_data.price,
-            stock_quantity=variant_data.stock_quantity,
             image_url=variant_data.image_url,
             sort_order=variant_data.sort_order
         )
@@ -369,7 +389,8 @@ class ProductService:
         if not db_variant:
             return None
 
-        update_data = variant_data.model_dump(exclude_unset=True)
+        # Only update fields that are provided (not None)
+        update_data = variant_data.model_dump(exclude_unset=True, exclude_none=True)
         for field, value in update_data.items():
             setattr(db_variant, field, value)
 

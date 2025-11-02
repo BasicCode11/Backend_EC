@@ -1,9 +1,12 @@
+# 🔧 Authentication System - Fixes Applied
+# install package
 ```
-#install package
+
 Remove-Item -Recurse -Force .venv
 Remove-Item -Force uv.lock
 
 uv sync
+```
 
 #run project command 
  

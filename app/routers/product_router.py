@@ -6,6 +6,7 @@ from decimal import Decimal
 import json
 from app.database import get_db
 from app.models.user import User
+from app.models.product_variant import ProductVariant
 from app.schemas.product import (
     ProductCreate,
     ProductUpdate,
@@ -258,9 +259,10 @@ def create_product(
     weight: Optional[Decimal] = Form(None),
     dimensions: Optional[str] = Form(None),
     featured: bool = Form(False),
-    status: str = Form("active"),
+    product_status: str = Form("active"),
     variants: Optional[str] = Form(None),
     images: List[UploadFile] = File(None),
+    variant_images: Optional[List[UploadFile]] = File(default=[]),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:create"]))
 ):
@@ -269,7 +271,8 @@ def create_product(
     
     Accepts multipart/form-data with:
     - Basic product fields
-    - Multiple image file uploads
+    - Multiple image file uploads (for main product images)
+    - Multiple variant_images file uploads (for variant-specific images, matched by index)
     - dimensions as JSON string (optional)
     - variants as JSON array string (optional)
     
@@ -280,10 +283,15 @@ def create_product(
         "variant_name": "Red - Medium",
         "attributes": {"color": "Red", "size": "M"},
         "price": 29.99,
-        "stock_quantity": 50,
         "sort_order": 0
       }
     ]
+    
+    NOTE: Stock is NOT managed via variants. After creating the product,
+    use /api/inventory endpoints to manage stock for the product.
+    
+    Note: variant_images are matched to variants by index order.
+    First variant_images file goes to first variant, second to second variant, etc.
     """
     ip_address = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.headers.get("X-Real-IP", "") or (request.client.host if request.client else None)
     user_agent = request.headers.get("User-Agent")
@@ -305,20 +313,26 @@ def create_product(
                 if not isinstance(variants_list, list):
                     raise ValidationError("Variants must be a JSON array")
                 
-                for variant_item in variants_list:
+                for idx, variant_item in enumerate(variants_list):
+                    # Check if there's a corresponding variant image file
+                    variant_image_url = variant_item.get("image_url")
+                    if variant_images and idx < len(variant_images):
+                        variant_image_file = variant_images[idx]
+                        if variant_image_file.filename:
+                            variant_image_url = LogoUpload._save_image(variant_image_file)
+                    
                     variant_data_list.append(
                         ProductVariantCreate(
                             sku=variant_item.get("sku"),
                             variant_name=variant_item.get("variant_name"),
                             attributes=variant_item.get("attributes"),
                             price=variant_item.get("price"),
-                            stock_quantity=variant_item.get("stock_quantity", 0),
-                            image_url=variant_item.get("image_url"),
+                            image_url=variant_image_url,
                             sort_order=variant_item.get("sort_order", 0)
                         )
                     )
-            except json.JSONDecodeError:
-                raise ValidationError("Invalid JSON format for variants")
+            except json.JSONDecodeError as e:
+                raise ValidationError(f"Invalid JSON format for variants: {str(e)}")
             except Exception as e:
                 raise ValidationError(f"Error parsing variants: {str(e)}")
         
@@ -349,7 +363,7 @@ def create_product(
             weight=weight,
             dimensions=dimensions_dict,
             featured=featured,
-            status=ProductStatus(status),
+            status=ProductStatus(product_status),
             images=image_data_list,
             variants=variant_data_list
         )
@@ -379,7 +393,7 @@ def update_product(
     weight: Optional[Decimal] = Form(None),
     dimensions: Optional[str] = Form(None),
     featured: Optional[bool] = Form(None),
-    status: Optional[str] = Form(None),
+    product_status: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:update"]))
 ):
@@ -412,7 +426,7 @@ def update_product(
             weight=weight,
             dimensions=dimensions_dict,
             featured=featured,
-            status=ProductStatus(status) if status else None
+            status=ProductStatus(product_status) if product_status else None
         )
         
         product = ProductService.update(db, product_id, product_data, current_user, ip_address, user_agent)
@@ -421,7 +435,7 @@ def update_product(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Product not found"
             )
-        return product
+        return transform_product_with_primary_image(product)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -502,6 +516,7 @@ def delete_product_image(
     current_user: User = Depends(require_permission(["products:update"]))
 ):
     """Delete a product image - requires products:update permission"""
+    
     success = ProductService.delete_image(db, image_id)
     if not success:
         raise HTTPException(
@@ -515,12 +530,51 @@ def delete_product_image(
 @router.post("/products/{product_id}/variants", response_model=ProductVariantResponse, status_code=status.HTTP_201_CREATED)
 def add_product_variant(
     product_id: int,
-    variant_data: ProductVariantCreate,
+    variant_name: str = Form(...),
+    sku: Optional[str] = Form(None),
+    attributes: Optional[str] = Form(None),
+    price: Optional[Decimal] = Form(None),
+    sort_order: int = Form(0),
+    variant_image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:update"]))
 ):
-    """Add a variant to a product - requires products:update permission"""
+    """
+    Add a variant to a product - requires products:update permission.
+    
+    Accepts multipart/form-data with:
+    - variant_name (required)
+    - sku, price, sort_order (optional)
+    - attributes as JSON string (optional)
+    - variant_image file upload (optional)
+    
+    NOTE: Stock is NOT managed here. Use /api/inventory endpoints to manage stock.
+    Variants define product options (size, color, etc.) and optional pricing.
+    """
     try:
+        # Parse attributes JSON if provided
+        attributes_dict = None
+        if attributes:
+            try:
+                attributes_dict = json.loads(attributes)
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for attributes")
+        
+        # Upload variant image if provided
+        image_url_str = None
+        if variant_image and variant_image.filename:
+            image_url_str = LogoUpload._save_image(variant_image)
+        
+        # Create variant data object
+        variant_data = ProductVariantCreate(
+            sku=sku,
+            variant_name=variant_name,
+            attributes=attributes_dict,
+            price=price,
+            image_url=image_url_str,
+            sort_order=sort_order
+        )
+        
         variant = ProductService.add_variant(db, product_id, variant_data)
         return variant
     except ValidationError as e:
@@ -533,18 +587,66 @@ def add_product_variant(
 @router.put("/products/variants/{variant_id}", response_model=ProductVariantResponse)
 def update_product_variant(
     variant_id: int,
-    variant_data: ProductVariantUpdate,
+    variant_name: Optional[str] = Form(None),
+    sku: Optional[str] = Form(None),
+    attributes: Optional[str] = Form(None),
+    price: Optional[Decimal] = Form(None),
+    sort_order: Optional[int] = Form(None),
+    variant_image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:update"]))
 ):
-    """Update a product variant - requires products:update permission"""
-    variant = ProductService.update_variant(db, variant_id, variant_data)
-    if not variant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Variant not found"
+    """
+    Update a product variant - requires products:update permission.
+    
+    Accepts multipart/form-data with optional fields:
+    - variant_name, sku, price, sort_order
+    - attributes as JSON string
+    - variant_image file upload (will replace existing image)
+    
+    NOTE: Stock is NOT managed here. Use /api/inventory endpoints to manage stock.
+    """
+    try:
+        # Parse attributes JSON if provided
+        attributes_dict = None
+        if attributes:
+            try:
+                attributes_dict = json.loads(attributes)
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for attributes")
+        
+        # Upload new variant image if provided
+        image_url_str = None
+        if variant_image and variant_image.filename:
+            # Get old variant to delete old image
+            old_variant = db.get(ProductVariant, variant_id)
+            if old_variant and old_variant.image_url:
+                LogoUpload._delete_logo(old_variant.image_url)
+            
+            image_url_str = LogoUpload._save_image(variant_image)
+        
+        # Create update data object
+        variant_data = ProductVariantUpdate(
+            sku=sku,
+            variant_name=variant_name,
+            attributes=attributes_dict,
+            price=price,
+            image_url=image_url_str,
+            sort_order=sort_order
         )
-    return variant
+        
+        variant = ProductService.update_variant(db, variant_id, variant_data)
+        if not variant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Variant not found"
+            )
+        return variant
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 @router.delete("/products/variants/{variant_id}", status_code=status.HTTP_200_OK)
@@ -553,11 +655,29 @@ def delete_product_variant(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:update"]))
 ):
-    """Delete a product variant - requires products:update permission"""
+    """
+    Delete a product variant - requires products:update permission.
+    
+    Also deletes the variant image from filesystem if it exists.
+    """
+    # Get variant to delete its image
+    variant = db.get(ProductVariant, variant_id)
+    if not variant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Variant not found"
+        )
+    
+    # Delete variant image from filesystem if exists
+    if variant.image_url:
+        LogoUpload._delete_logo(variant.image_url)
+    
+    # Delete variant from database
     success = ProductService.delete_variant(db, variant_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Variant not found"
         )
+    
     return {"message": "Variant deleted successfully"}
