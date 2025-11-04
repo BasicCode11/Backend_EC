@@ -19,6 +19,7 @@ from .discount import Discount, DiscountType, ApplyTo
 from .discount_application import DiscountApplication
 from .email_notification import EmailNotification, EmailStatus
 from .audit_log import AuditLog
+from .wishlist import Wishlist
 
 __all__ = [
     "User",
@@ -50,4 +51,5 @@ __all__ = [
     "EmailNotification",
     "EmailStatus",
     "AuditLog",
+    "Wishlist",
 ]

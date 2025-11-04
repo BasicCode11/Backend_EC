@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABA PayWay Payment Integration Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 30px;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+        h1 {
+            color: #333;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .loading {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+        }
+        .error {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            color: #721c24;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            color: #0c5460;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏦 ABA PayWay Payment Integration</h1>
+        <p>This page demonstrates how to integrate ABA PayWay payment in your frontend.</p>
+        
+        <div class="info">
+            <strong>📝 Instructions:</strong>
+            <ol>
+                <li>Enter your order ID and authentication token below</li>
+                <li>Click "Proceed to Payment"</li>
+                <li>You will be redirected to ABA PayWay payment page</li>
+                <li>Complete payment on ABA's website</li>
+                <li>You'll be redirected back to your site</li>
+            </ol>
+        </div>
+        
+        <h2>Payment Form</h2>
+        <div style="margin-bottom: 15px;">
+            <label><strong>API Base URL:</strong></label><br>
+            <input type="text" id="apiUrl" value="http://localhost:8000" style="width: 100%; padding: 8px; margin-top: 5px;">
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label><strong>Order ID:</strong></label><br>
+            <input type="number" id="orderId" value="1" style="width: 100%; padding: 8px; margin-top: 5px;">
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label><strong>Auth Token:</strong></label><br>
+            <input type="text" id="authToken" placeholder="Bearer token (optional for testing)" style="width: 100%; padding: 8px; margin-top: 5px;">
+        </div>
+        
+        <button onclick="initiatePayment()">💳 Proceed to Payment</button>
+        
+        <div id="loading" class="loading">
+            ⏳ Preparing payment... Please wait...
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div id="response" style="margin-top: 20px;"></div>
+    </div>
+    
+    <script>
+        async function initiatePayment() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const orderId = document.getElementById('orderId').value;
+            const authToken = document.getElementById('authToken').value;
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const responseDiv = document.getElementById('response');
+            
+            // Reset UI
+            loadingDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
+            responseDiv.innerHTML = '';
+            
+            try {
+                // 1. Call backend API to get payment data
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                
+                if (authToken) {
+                    headers['Authorization'] = authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}`;
+                }
+                
+                const response = await fetch(`${apiUrl}/api/payments/aba-payway/checkout`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        order_id: parseInt(orderId),
+                        return_url: window.location.origin + '/payment/callback',
+                        continue_url: window.location.origin + '/order-success',
+                        cancel_url: window.location.origin + '/cart'
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to initiate payment');
+                }
+                
+                const data = await response.json();
+                console.log('Payment data received:', data);
+                
+                // Show response data
+                responseDiv.innerHTML = `
+                    <div class="info">
+                        <strong>✅ Payment Data Received:</strong>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        <p><strong>Redirecting to ABA PayWay in 3 seconds...</strong></p>
+                    </div>
+                `;
+                
+                // 2. Create hidden form with payment data
+                setTimeout(() => {
+                    submitPaymentForm(data);
+                }, 3000);
+                
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.innerHTML = `
+                    <strong>❌ Error:</strong> ${error.message}
+                    <br><br>
+                    <strong>Troubleshooting:</strong>
+                    <ul>
+                        <li>Make sure your backend server is running</li>
+                        <li>Check that the order exists</li>
+                        <li>Verify your auth token is valid</li>
+                        <li>Check browser console for details</li>
+                    </ul>
+                `;
+                console.error('Payment error:', error);
+            }
+        }
+        
+        function submitPaymentForm(paymentData) {
+            const loadingDiv = document.getElementById('loading');
+            loadingDiv.innerHTML = '🔄 Redirecting to ABA PayWay...';
+            
+            // Create form element
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = paymentData.checkout_url;
+            
+            // Add all payment data as hidden inputs
+            for (const [key, value] of Object.entries(paymentData.payment_data)) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = value;
+                form.appendChild(input);
+            }
+            
+            // Add form to page (hidden)
+            form.style.display = 'none';
+            document.body.appendChild(form);
+            
+            // Log form data
+            console.log('Submitting form to:', form.action);
+            console.log('Form data:', paymentData.payment_data);
+            
+            // Submit form - this will redirect to ABA PayWay
+            form.submit();
+        }
+    </script>
+</body>
+</html>

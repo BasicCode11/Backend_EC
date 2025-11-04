@@ -59,6 +59,13 @@ class User(Base):
         lazy="select"
     )
     
+    wishlist_items: Mapped[List["Wishlist"]] = relationship(
+        "Wishlist",
+        back_populates="user",
+        lazy="select",
+        cascade="all, delete-orphan"
+    )
+    
     discount_applications: Mapped[List["DiscountApplication"]] = relationship(
         "DiscountApplication",
         back_populates="user",

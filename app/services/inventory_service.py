@@ -344,13 +344,12 @@ class InventoryService:
         db.flush()
 
         order_info = f" for order #{reserve_data.order_id}" if reserve_data.order_id else ""
-        AuditLogService.log_action(
+        AuditLogService.log_create(
             db=db,
             user_id=current_user.id,
-            action="STOCK_RESERVED",
-            resource_type="Inventory",
-            resource_id=inventory.id,
-            details=f"Reserved {reserve_data.quantity} units{order_info}. Total reserved: {inventory.reserved_quantity}"
+            entity_type="Inventory",
+            entity_id=inventory.id,
+            new_values=f"Reserved {reserve_data.quantity} units{order_info}. Total reserved: {inventory.reserved_quantity}"
         )
 
         db.commit()
@@ -380,13 +379,12 @@ class InventoryService:
         db.flush()
 
         order_info = f" from order #{release_data.order_id}" if release_data.order_id else ""
-        AuditLogService.log_action(
+        AuditLogService.log_create(
             db=db,
             user_id=current_user.id,
-            action="STOCK_RELEASED",
-            resource_type="Inventory",
-            resource_id=inventory.id,
-            details=f"Released {release_data.quantity} units{order_info}. Total reserved: {inventory.reserved_quantity}"
+            entity_type="Inventory",
+            entity_id=inventory.id,
+            new_values=f"Released {release_data.quantity} units{order_info}. Total reserved: {inventory.reserved_quantity}"
         )
 
         db.commit()
@@ -416,13 +414,12 @@ class InventoryService:
         db.flush()
 
         order_info = f" for order #{order_id}" if order_id else ""
-        AuditLogService.log_action(
+        AuditLogService.log_create(
             db=db,
             user_id=current_user.id,
-            action="ORDER_FULFILLED",
-            resource_type="Inventory",
-            resource_id=inventory.id,
-            details=f"Fulfilled {quantity} units{order_info}. Stock: {inventory.stock_quantity}, Reserved: {inventory.reserved_quantity}"
+            entity_type="ORDER_FULFILLED",
+            entity_id=inventory.id,
+            new_values=f"Fulfilled {quantity} units{order_info}. Stock: {inventory.stock_quantity}, Reserved: {inventory.reserved_quantity}"
         )
 
         db.commit()

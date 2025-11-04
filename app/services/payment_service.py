@@ -1,0 +1,338 @@
+import hashlib
+import base64
+import hmac
+import json
+from datetime import datetime, timezone
+from typing import Optional, Dict, Any
+from decimal import Decimal
+from sqlalchemy.orm import Session
+import httpx
+
+from app.models.payment import Payment
+from app.models.order import Order, PaymentStatus as OrderPaymentStatus
+from app.schemas.payment import (
+    PaymentCreate,
+    ABAPayWayCheckoutRequest,
+    ABAPayWayCheckoutResponse,
+    ABAPayWayCallback
+)
+from app.core.config import settings
+from app.core.exceptions import ValidationError, NotFoundError
+from app.services.audit_log_service import AuditLogService
+
+# Note: RSA encryption is available if needed via pycryptodome
+# from Crypto.PublicKey import RSA
+# from Crypto.Cipher import PKCS1_v1_5
+# from Crypto.Hash import SHA256
+
+
+class ABAPayWayService:
+    """Service for ABA PayWay payment integration"""
+
+    @staticmethod
+    def _get_base64_encode(data: str) -> str:
+        """Encode data to base64"""
+        return base64.b64encode(data.encode()).decode()
+
+    @staticmethod
+    def _create_hash(data: str) -> str:
+        """Create SHA256 hash with HMAC using public key"""
+        return hmac.new(
+            settings.ABA_PAYWAY_PUBLIC_KEY.encode(),
+            data.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+    @staticmethod
+    def _get_transaction_id(order_id: int) -> str:
+        """Generate unique transaction ID for order"""
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        return f"ORD{order_id}_{timestamp}"
+
+    @staticmethod
+    def _format_amount(amount: Decimal) -> str:
+        """Format amount to 2 decimal places as string"""
+        return f"{float(amount):.2f}"
+
+    @staticmethod
+    def create_checkout_request(
+        db: Session,
+        order: Order,
+        request_data: ABAPayWayCheckoutRequest
+    ) -> ABAPayWayCheckoutResponse:
+        """
+        Create ABA PayWay checkout request
+        
+        Returns checkout URL for customer to complete payment
+        """
+        # Generate transaction ID
+        transaction_id = ABAPayWayService._get_transaction_id(order.id)
+        
+        # Get current timestamp
+        req_time = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        
+        # Format amount (2 decimal places)
+        amount = ABAPayWayService._format_amount(order.total_amount)
+        
+        # Prepare hash string (order matters!)
+        hash_string = (
+            f"{req_time}"
+            f"{settings.ABA_PAYWAY_MERCHANT_ID}"
+            f"{transaction_id}"
+            f"{amount}"
+        )
+        
+        # Create hash
+        hash_value = ABAPayWayService._create_hash(hash_string)
+        
+        # Prepare return URLs
+        return_url = request_data.return_url or settings.ABA_PAYWAY_RETURN_URL
+        continue_url = request_data.continue_url or settings.ABA_PAYWAY_CONTINUE_URL
+        cancel_url = request_data.cancel_url or settings.ABA_PAYWAY_CANCEL_URL
+        
+        # Prepare request payload
+        payload = {
+            "req_time": req_time,
+            "merchant_id": settings.ABA_PAYWAY_MERCHANT_ID,
+            "tran_id": transaction_id,
+            "amount": amount,
+            "hash": hash_value,
+            "return_url": return_url,
+            "continue_url": continue_url,
+            "cancel_url": cancel_url,
+            "payment_option": "abapay",  # or "cards" for credit/debit cards
+            "currency": "USD",  # or "KHR" for Khmer Riel
+            "items": json.dumps([{
+                "name": f"Order #{order.order_number}",
+                "quantity": str(order.total_items),
+                "price": amount
+            }]),
+            "shipping": "0.00",
+            "firstname": order.user.first_name if order.user else "Guest",
+            "lastname": order.user.last_name if order.user else "Customer",
+            "email": order.user.email if order.user else "",
+            "phone": order.user.phone if order.user else "",
+        }
+        
+        # Create payment record
+        payment = Payment(
+            order_id=order.id,
+            payment_method="aba_payway",
+            amount=order.total_amount,
+            status="pending",
+            payment_gateway_transaction_id=transaction_id,  # Fixed: correct field name
+            gateway_response={  # Fixed: correct field name
+                "req_time": req_time,
+                "merchant_id": settings.ABA_PAYWAY_MERCHANT_ID,
+                "return_url": return_url,
+                "continue_url": continue_url,
+                "cancel_url": cancel_url
+            }
+        )
+        db.add(payment)
+        db.commit()
+        db.refresh(payment)
+        
+        # Log payment initiation
+        AuditLogService.log_create(
+            db=db,
+            user_id=order.user_id,
+            entity_type="PAYMENT_INITIATED",
+            entity_id=payment.id,
+            new_values=f"ABA PayWay payment initiated for order {order.order_number}. Transaction ID: {transaction_id}"
+        )
+        
+        # ABA PayWay uses form-based checkout, not API POST
+        # Build checkout URL that frontend will redirect to
+        # The URL should contain the payment parameters
+        
+        # Store payment details for frontend to submit
+        payment.gateway_response["checkout_payload"] = payload
+        db.commit()
+        
+        # Construct checkout URL
+        # For ABA PayWay, the checkout URL is the API endpoint
+        # Frontend needs to POST form data to this URL
+        checkout_url = settings.ABA_PAYWAY_API_URL
+        
+        return ABAPayWayCheckoutResponse(
+            transaction_id=transaction_id,
+            checkout_url=checkout_url,
+            payment_data=payload,  # Include payload for frontend
+            expires_at=None  # ABA PayWay typically has 30 min expiry
+        )
+
+    @staticmethod
+    def verify_callback(
+        db: Session,
+        callback_data: ABAPayWayCallback
+    ) -> Dict[str, Any]:
+        """
+        Verify ABA PayWay payment callback
+        
+        This is called when ABA redirects back to your app
+        """
+        # Verify hash
+        hash_string = (
+            f"{callback_data.tran_id}"
+            f"{callback_data.req_time}"
+            f"{callback_data.amount}"
+            f"{callback_data.merchant_id}"
+        )
+        
+        expected_hash = ABAPayWayService._create_hash(hash_string)
+        
+        if callback_data.hash != expected_hash:
+            raise ValidationError("Invalid payment callback hash")
+        
+        # Find payment by transaction ID
+        payment = db.query(Payment).filter(
+            Payment.payment_gateway_transaction_id == callback_data.tran_id
+        ).first()
+        
+        if not payment:
+            raise NotFoundError(f"Payment with transaction ID {callback_data.tran_id} not found")
+        
+        # Get order
+        order = db.query(Order).filter(Order.id == payment.order_id).first()
+        
+        if not order:
+            raise NotFoundError(f"Order with ID {payment.order_id} not found")
+        
+        # Check status
+        # ABA PayWay callback includes status: 0 = success, 1 = failed
+        payment_status = callback_data.status
+        
+        if payment_status == "0" or callback_data.payment_option:
+            # Payment successful
+            payment.status = "completed"
+            # Note: Payment model doesn't have paid_at field, using updated_at
+            if payment.gateway_response is None:
+                payment.gateway_response = {}
+            payment.gateway_response["callback_data"] = callback_data.dict()
+            payment.gateway_response["verified_at"] = datetime.now(timezone.utc).isoformat()
+            payment.gateway_response["paid_at"] = datetime.now(timezone.utc).isoformat()
+            
+            # Update order payment status
+            order.payment_status = OrderPaymentStatus.PAID.value
+            
+            # Log success
+            AuditLogService.log_action(
+                db=db,
+                user_id=order.user_id,
+                action="PAYMENT_COMPLETED",
+                resource_type="Payment",
+                resource_id=payment.id,
+                details=f"ABA PayWay payment completed for order {order.order_number}. Amount: {callback_data.amount}"
+            )
+            
+        else:
+            # Payment failed
+            payment.status = "failed"
+            if payment.gateway_response is None:
+                payment.gateway_response = {}
+            payment.gateway_response["callback_data"] = callback_data.dict()
+            payment.gateway_response["failed_at"] = datetime.now(timezone.utc).isoformat()
+            
+            # Update order payment status
+            order.payment_status = OrderPaymentStatus.FAILED.value
+            
+            # Log failure
+            AuditLogService.log_action(
+                db=db,
+                user_id=order.user_id,
+                action="PAYMENT_FAILED",
+                resource_type="Payment",
+                resource_id=payment.id,
+                details=f"ABA PayWay payment failed for order {order.order_number}"
+            )
+        
+        db.commit()
+        db.refresh(payment)
+        db.refresh(order)
+        
+        return {
+            "payment_id": payment.id,
+            "order_id": order.id,
+            "order_number": order.order_number,
+            "status": payment.status,
+            "amount": float(payment.amount),
+            "transaction_id": payment.payment_gateway_transaction_id
+        }
+
+    @staticmethod
+    def check_payment_status(
+        db: Session,
+        transaction_id: str
+    ) -> Dict[str, Any]:
+        """Check payment status by transaction ID"""
+        payment = db.query(Payment).filter(
+            Payment.payment_gateway_transaction_id == transaction_id
+        ).first()
+        
+        if not payment:
+            raise NotFoundError(f"Payment with transaction ID {transaction_id} not found")
+        
+        order = db.query(Order).filter(Order.id == payment.order_id).first()
+        
+        # Get paid_at from gateway_response if available
+        paid_at = None
+        if payment.gateway_response and "paid_at" in payment.gateway_response:
+            paid_at = payment.gateway_response["paid_at"]
+        
+        return {
+            "payment_id": payment.id,
+            "order_id": order.id,
+            "order_number": order.order_number,
+            "status": payment.status,
+            "amount": float(payment.amount),
+            "transaction_id": payment.payment_gateway_transaction_id,
+            "paid_at": paid_at,
+            "created_at": payment.created_at.isoformat()
+        }
+
+
+class PaymentService:
+    """General payment service"""
+
+    @staticmethod
+    def create_payment(
+        db: Session,
+        payment_data: PaymentCreate,
+        user_id: Optional[int] = None
+    ) -> Payment:
+        """Create payment record"""
+        # Verify order exists
+        order = db.query(Order).filter(Order.id == payment_data.order_id).first()
+        if not order:
+            raise NotFoundError(f"Order with ID {payment_data.order_id} not found")
+        
+        # Create payment
+        payment = Payment(
+            order_id=payment_data.order_id,
+            payment_method=payment_data.payment_method.value,
+            amount=payment_data.amount,
+            status="pending",
+            payment_gateway_transaction_id=payment_data.transaction_id,
+            gateway_response=payment_data.payment_details or {}
+        )
+        
+        db.add(payment)
+        db.commit()
+        db.refresh(payment)
+        
+        return payment
+
+    @staticmethod
+    def get_payment_by_order(db: Session, order_id: int) -> Optional[Payment]:
+        """Get payment by order ID"""
+        return db.query(Payment).filter(
+            Payment.order_id == order_id
+        ).order_by(Payment.created_at.desc()).first()
+
+    @staticmethod
+    def get_payment_by_transaction(db: Session, transaction_id: str) -> Optional[Payment]:
+        """Get payment by transaction ID"""
+        return db.query(Payment).filter(
+            Payment.payment_gateway_transaction_id == transaction_id
+        ).first()

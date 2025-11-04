@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # CORS
     ALLOWED_ORIGINS: List[str] = Field(
         default_factory=lambda: [
+            "http://localhost:5173",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://localhost:8000",
@@ -72,6 +73,16 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = Field(default="", env="TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID: str = Field(default="", env="TELEGRAM_CHAT_ID")
     TELEGRAM_ALERTS_ENABLED: bool = Field(default=False, env="TELEGRAM_ALERTS_ENABLED")
+
+    # ABA PayWay Configuration
+    ABA_PAYWAY_MERCHANT_ID: str = Field(..., env="ABA_PAYWAY_MERCHANT_ID")
+    ABA_PAYWAY_API_URL: str = Field(..., env="ABA_PAYWAY_API_URL")
+    ABA_PAYWAY_PUBLIC_KEY: str = Field(..., env="ABA_PAYWAY_PUBLIC_KEY")
+    ABA_PAYWAY_RSA_PUBLIC_KEY: str = Field(..., env="ABA_PAYWAY_RSA_PUBLIC_KEY")
+    ABA_PAYWAY_RSA_PRIVATE_KEY: str = Field(..., env="ABA_PAYWAY_RSA_PRIVATE_KEY")
+    ABA_PAYWAY_RETURN_URL: str = Field(default="http://localhost:3000/payment/callback", env="ABA_PAYWAY_RETURN_URL")
+    ABA_PAYWAY_CONTINUE_URL: str = Field(default="http://localhost:3000/payment/success", env="ABA_PAYWAY_CONTINUE_URL")
+    ABA_PAYWAY_CANCEL_URL: str = Field(default="http://localhost:3000/payment/cancel", env="ABA_PAYWAY_CANCEL_URL")
 
     @property
     def web_inactivity_timeout(self) -> timedelta:

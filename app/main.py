@@ -20,6 +20,11 @@ from .routers.category_router import router as category_router
 from .routers.product_router import router as product_router
 from .routers.inventory_router import router as inventory_router
 from .routers.telegram_router import router as telegram_router
+from .routers.order_router import router as order_router
+from .routers.cart_router import router as cart_router
+from .routers.payment_router import router as payment_router
+from .routers.review_router import router as review_router
+from .routers.wishlist_router import router as wishlist_router
 from app.services.inventory_alert_service import InventoryAlertService
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,6 +65,11 @@ app.include_router(category_router, prefix="/api", tags=["Categories"])
 app.include_router(product_router, prefix="/api", tags=["Products"])
 app.include_router(inventory_router, prefix="/api", tags=["Inventory"])
 app.include_router(telegram_router, prefix="/api/alerts", tags=["Inventory Alerts"])
+app.include_router(order_router, prefix="/api", tags=["Orders"])
+app.include_router(cart_router, prefix="/api", tags=["Cart"])
+app.include_router(payment_router, prefix="/api", tags=["Payments"])
+app.include_router(review_router, prefix="/api", tags=["Reviews"])
+app.include_router(wishlist_router, prefix="/api", tags=["Wishlist"])
 
 @app.get("/", tags=["health"])
 def health():
@@ -85,4 +95,4 @@ scheduler = BackgroundScheduler()
 # Every Sunday at 9:00 AM
 scheduler.add_job(send_weekly_inventory_alerts, "cron", day_of_week="sun", hour=9, minute=0)
 scheduler.start()
-print("📅 Weekly inventory alert scheduler started (Every Sunday 9AM)")
+print("Weekly inventory alert scheduler started (Every Sunday 9AM)")
