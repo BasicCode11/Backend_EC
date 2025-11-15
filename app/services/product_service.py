@@ -6,6 +6,7 @@ from app.models.product_image import ProductImage
 from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.models.category import Category
+from app.models.inventory import Inventory
 from app.schemas.product import (
     ProductCreate,
     ProductUpdate,
@@ -16,6 +17,7 @@ from app.schemas.product import (
 from app.core.exceptions import ValidationError
 from app.services.audit_log_service import AuditLogService
 from app.services.file_service import LogoUpload
+from app.services.stock_validation_service import StockValidationService
 
 class ProductService:
     """Service layer for product operations."""
@@ -32,7 +34,8 @@ class ProductService:
         """Get all products with optional filters"""
         query = select(Product).options(
             selectinload(Product.category),
-            selectinload(Product.images)
+            selectinload(Product.images),
+            selectinload(Product.inventory)
         )
 
         if status:
@@ -57,7 +60,8 @@ class ProductService:
         """Search products with advanced filters"""
         query = select(Product).options(
             selectinload(Product.category),
-            selectinload(Product.images)
+            selectinload(Product.images),
+            selectinload(Product.inventory)
         )
 
         # Text search
@@ -113,13 +117,14 @@ class ProductService:
 
     @staticmethod
     def get_with_details(db: Session, product_id: int) -> Optional[Product]:
-        """Get product with images and variants loaded"""
+        """Get product with images, variants, and inventory loaded"""
         stmt = (
             select(Product)
             .where(Product.id == product_id)
             .options(
                 selectinload(Product.images),
-                selectinload(Product.variants)
+                selectinload(Product.variants),
+                selectinload(Product.inventory)
             )
         )
         return db.execute(stmt).scalars().first()
@@ -175,6 +180,21 @@ class ProductService:
                     sort_order=variant_data.sort_order if variant_data.sort_order else idx
                 )
                 db.add(db_variant)
+
+        # Create inventory if provided
+        if product_data.inventory:
+            db_inventory = Inventory(
+                product_id=db_product.id,
+                stock_quantity=product_data.inventory.get("stock_quantity", 0),
+                reserved_quantity=product_data.inventory.get("reserved_quantity", 0),
+                low_stock_threshold=product_data.inventory.get("low_stock_threshold", 10),
+                reorder_level=product_data.inventory.get("reorder_level", 5),
+                sku=product_data.inventory.get("sku"),
+                batch_number=product_data.inventory.get("batch_number"),
+                expiry_date=product_data.inventory.get("expiry_date"),
+                location=product_data.inventory.get("location")
+            )
+            db.add(db_inventory)
 
         db.commit()
         db.refresh(db_product)
@@ -353,7 +373,7 @@ class ProductService:
         """
         Add a variant to a product.
         
-        NOTE: Stock is NOT managed here. Use Inventory endpoints to manage stock.
+        NOTE: Variant stock_quantity must not exceed product inventory.
         """
         product = ProductService.get_by_id(db, product_id)
         if not product:
@@ -367,12 +387,22 @@ class ProductService:
             if existing_variant:
                 raise ValidationError(f"SKU '{variant_data.sku}' already exists")
 
+        # Validate stock doesn't exceed inventory
+        if variant_data.stock_quantity > 0:
+            StockValidationService.validate_variant_stock_against_inventory(
+                db=db,
+                product_id=product_id,
+                variant_id=None,
+                variant_stock=variant_data.stock_quantity
+            )
+
         db_variant = ProductVariant(
             product_id=product_id,
             sku=variant_data.sku,
             variant_name=variant_data.variant_name,
             attributes=variant_data.attributes,
             price=variant_data.price,
+            stock_quantity=variant_data.stock_quantity,
             image_url=variant_data.image_url,
             sort_order=variant_data.sort_order
         )
@@ -391,6 +421,16 @@ class ProductService:
 
         # Only update fields that are provided (not None)
         update_data = variant_data.model_dump(exclude_unset=True, exclude_none=True)
+        
+        # Validate stock if being updated
+        if 'stock_quantity' in update_data and update_data['stock_quantity'] is not None:
+            StockValidationService.validate_variant_stock_against_inventory(
+                db=db,
+                product_id=db_variant.product_id,
+                variant_id=variant_id,
+                variant_stock=update_data['stock_quantity']
+            )
+        
         for field, value in update_data.items():
             setattr(db_variant, field, value)
 
@@ -416,7 +456,8 @@ class ProductService:
             select(Product)
             .options(
                 selectinload(Product.category),
-                selectinload(Product.images)
+                selectinload(Product.images),
+                selectinload(Product.inventory)
             )
             .where(Product.featured == True)
             .where(Product.status == ProductStatus.ACTIVE.value)
@@ -426,19 +467,22 @@ class ProductService:
         return db.execute(stmt).scalars().all()
 
     @staticmethod
-    def get_by_category(db: Session, category_id: int, limit: int = 20) -> List[Product]:
+    def get_by_category(db: Session, category_id: Optional[int] = None, limit: int = 20) -> List[Product]:
         """Get products by category"""
         stmt = (
             select(Product)
             .options(
                 selectinload(Product.category),
-                selectinload(Product.images)
+                selectinload(Product.images),
+                selectinload(Product.inventory)
             )
-            .where(Product.category_id == category_id)
             .where(Product.status == ProductStatus.ACTIVE.value)
             .order_by(desc(Product.created_at))
             .limit(limit)
         )
+        if category_id:
+            stmt = stmt.where(Product.category_id == category_id)
+            
         return db.execute(stmt).scalars().all()
 
     @staticmethod

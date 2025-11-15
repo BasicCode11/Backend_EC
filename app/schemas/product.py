@@ -37,9 +37,8 @@ class ProductVariantBase(BaseModel):
     """
     Base schema for Product Variants.
     
-    NOTE: stock_quantity is NOT stored on variants.
-    Stock is managed via the Inventory table (product-level).
-    Variants define options (size, color) and optional variant-specific pricing.
+    NOTE: stock_quantity is stored on variants but must not exceed product inventory.
+    Variants define options (size, color), pricing, and their allocated stock.
     """
     sku: Optional[str] = Field(None, max_length=100)
     variant_name: str = Field(..., max_length=255)
@@ -50,8 +49,8 @@ class ProductVariantBase(BaseModel):
 
 
 class ProductVariantCreate(ProductVariantBase):
-    """Schema for creating a new product variant (no stock_quantity)"""
-    pass
+    """Schema for creating a new product variant with optional stock"""
+    stock_quantity: int = Field(default=0, ge=0, description="Stock for this variant (must not exceed product inventory)")
 
 
 class ProductVariantUpdate(BaseModel):
@@ -60,6 +59,7 @@ class ProductVariantUpdate(BaseModel):
     variant_name: Optional[str] = Field(None, max_length=255)
     attributes: Optional[Dict[str, Any]] = None
     price: Optional[Decimal] = Field(None, ge=0)
+    stock_quantity: Optional[int] = Field(None, ge=0, description="Stock for this variant (must not exceed product inventory)")
     image_url: Optional[str] = Field(None, max_length=500)
     sort_order: Optional[int] = None
 
@@ -104,6 +104,7 @@ class ProductBase(BaseModel):
 class ProductCreate(ProductBase):
     images: Optional[List[ProductImageCreate]] = []
     variants: Optional[List[ProductVariantCreate]] = []
+    inventory: Optional[Dict[str, Any]] = None
 
 
 class ProductUpdate(BaseModel):
@@ -128,6 +129,23 @@ class CategorySimple(BaseModel):
         from_attributes = True
 
 
+class InventorySimple(BaseModel):
+    """Simple inventory information for product responses"""
+    id: int
+    stock_quantity: int
+    reserved_quantity: int
+    available_quantity: int
+    low_stock_threshold: int
+    reorder_level: int
+    is_low_stock: bool
+    needs_reorder: bool
+    sku: Optional[str] = None
+    location: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class ProductResponse(BaseModel):
     id: int
     name: str
@@ -143,6 +161,8 @@ class ProductResponse(BaseModel):
     featured: bool
     status: str
     primary_image: Optional[str] = None
+    inventory: Optional[List[InventorySimple]] = []
+    total_stock: int = 0
     created_at: datetime
     updated_at: datetime
 

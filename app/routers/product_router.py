@@ -29,9 +29,28 @@ from app.core.exceptions import ValidationError
 router = APIRouter()
 
 
+def transform_variant_with_stock(variant):
+    """Helper function to transform variant with computed stock_quantity"""
+    from app.schemas.product import ProductVariantResponse
+    
+    return ProductVariantResponse(
+        id=variant.id,
+        product_id=variant.product_id,
+        sku=variant.sku,
+        variant_name=variant.variant_name,
+        attributes=variant.attributes,
+        price=variant.price,
+        image_url=variant.image_url,
+        sort_order=variant.sort_order,
+        stock_quantity=variant.stock_quantity,  # Computed property from model
+        created_at=variant.created_at,
+        updated_at=variant.updated_at
+    )
+
+
 def transform_product_with_primary_image(product):
-    """Helper function to transform product with primary image and category"""
-    from app.schemas.product import ProductResponse, CategorySimple
+    """Helper function to transform product with primary image, category, and inventory"""
+    from app.schemas.product import ProductResponse, CategorySimple, InventorySimple
     
     # Get primary image URL
     primary_img = None
@@ -50,6 +69,25 @@ def transform_product_with_primary_image(product):
             id=product.category.id,
             name=product.category.name
         )
+    
+    # Create inventory objects
+    inventory_list = []
+    total_stock = 0
+    if product.inventory:
+        for inv in product.inventory:
+            inventory_list.append(InventorySimple(
+                id=inv.id,
+                stock_quantity=inv.stock_quantity,
+                reserved_quantity=inv.reserved_quantity,
+                available_quantity=inv.available_quantity,
+                low_stock_threshold=inv.low_stock_threshold,
+                reorder_level=inv.reorder_level,
+                is_low_stock=inv.is_low_stock,
+                needs_reorder=inv.needs_reorder,
+                sku=inv.sku,
+                location=inv.location
+            ))
+            total_stock += inv.stock_quantity
     
     return ProductResponse(
         id=product.id,
@@ -66,14 +104,16 @@ def transform_product_with_primary_image(product):
         featured=product.featured,
         status=product.status,
         primary_image=primary_img,
+        inventory=inventory_list,
+        total_stock=total_stock,
         created_at=product.created_at,
         updated_at=product.updated_at
     )
 
 
 def transform_product_with_details(product):
-    """Helper function to transform product with full details including images and variants"""
-    from app.schemas.product import ProductWithDetails, CategorySimple, ProductImageResponse, ProductVariantResponse
+    """Helper function to transform product with full details including images, variants, and inventory"""
+    from app.schemas.product import ProductWithDetails, CategorySimple, ProductImageResponse, ProductVariantResponse, InventorySimple
     
     # Get primary image URL
     primary_img = None
@@ -93,6 +133,25 @@ def transform_product_with_details(product):
             name=product.category.name
         )
     
+    # Create inventory objects
+    inventory_list = []
+    total_stock = 0
+    if product.inventory:
+        for inv in product.inventory:
+            inventory_list.append(InventorySimple(
+                id=inv.id,
+                stock_quantity=inv.stock_quantity,
+                reserved_quantity=inv.reserved_quantity,
+                available_quantity=inv.available_quantity,
+                low_stock_threshold=inv.low_stock_threshold,
+                reorder_level=inv.reorder_level,
+                is_low_stock=inv.is_low_stock,
+                needs_reorder=inv.needs_reorder,
+                sku=inv.sku,
+                location=inv.location
+            ))
+            total_stock += inv.stock_quantity
+    
     return ProductWithDetails(
         id=product.id,
         name=product.name,
@@ -108,10 +167,12 @@ def transform_product_with_details(product):
         featured=product.featured,
         status=product.status,
         primary_image=primary_img,
+        inventory=inventory_list,
+        total_stock=total_stock,
         created_at=product.created_at,
         updated_at=product.updated_at,
         images=[ProductImageResponse.model_validate(img) for img in product.images],
-        variants=[ProductVariantResponse.model_validate(v) for v in product.variants]
+        variants=[transform_variant_with_stock(v) for v in product.variants]
     )
 
 
@@ -206,9 +267,9 @@ def list_featured_products(
     return [transform_product_with_primary_image(p) for p in products]
 
 
-@router.get("/products/by-category/{category_id}", response_model=List[ProductResponse])
+@router.get("/products/by-category", response_model=List[ProductResponse])
 def list_products_by_category(
-    category_id: int,
+    category_id: Optional[int] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
@@ -260,6 +321,7 @@ def create_product(
     dimensions: Optional[str] = Form(None),
     featured: bool = Form(False),
     product_status: str = Form("active"),
+    inventory: Optional[str] = Form(None),
     variants: Optional[str] = Form(None),
     images: List[UploadFile] = File(None),
     variant_images: Optional[List[UploadFile]] = File(default=[]),
@@ -275,6 +337,7 @@ def create_product(
     - Multiple variant_images file uploads (for variant-specific images, matched by index)
     - dimensions as JSON string (optional)
     - variants as JSON array string (optional)
+    - inventory as JSON object string (optional)
     
     Example variants JSON:
     [
@@ -287,8 +350,19 @@ def create_product(
       }
     ]
     
-    NOTE: Stock is NOT managed via variants. After creating the product,
-    use /api/inventory endpoints to manage stock for the product.
+    Example inventory JSON:
+    {
+      "stock_quantity": 100,
+      "reserved_quantity": 0,
+      "low_stock_threshold": 10,
+      "reorder_level": 5,
+      "sku": "PROD-001",
+      "batch_number": "BATCH-2024-001",
+      "location": "Warehouse A"
+    }
+    
+    NOTE: Stock is managed via inventory. You can create inventory during product creation
+    or use /api/inventory endpoints to manage stock separately.
     
     Note: variant_images are matched to variants by index order.
     First variant_images file goes to first variant, second to second variant, etc.
@@ -304,7 +378,16 @@ def create_product(
                 dimensions_dict = json.loads(dimensions)
             except json.JSONDecodeError:
                 raise ValidationError("Invalid JSON format for dimensions")
-        
+        # Parse inventory JSON if provided
+        inventory_dict = None
+        if inventory:
+            try:
+                inventory_dict = json.loads(inventory)
+                if not isinstance(inventory_dict, dict):
+                    raise ValidationError("Inventory must be a JSON object")
+            except json.JSONDecodeError as e:
+                raise ValidationError(f"Invalid JSON format for inventory: {str(e)}")
+            
         # Parse variants JSON if provided
         variant_data_list = []
         if variants:
@@ -365,7 +448,8 @@ def create_product(
             featured=featured,
             status=ProductStatus(product_status),
             images=image_data_list,
-            variants=variant_data_list
+            variants=variant_data_list,
+            inventory=inventory_dict
         )
         
         product = ProductService.create(db, product_data, current_user, ip_address, user_agent)
@@ -534,6 +618,7 @@ def add_product_variant(
     sku: Optional[str] = Form(None),
     attributes: Optional[str] = Form(None),
     price: Optional[Decimal] = Form(None),
+    stock_quantity: int = Form(0),
     sort_order: int = Form(0),
     variant_image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -544,12 +629,12 @@ def add_product_variant(
     
     Accepts multipart/form-data with:
     - variant_name (required)
-    - sku, price, sort_order (optional)
+    - sku, price, stock_quantity, sort_order (optional)
     - attributes as JSON string (optional)
     - variant_image file upload (optional)
     
-    NOTE: Stock is NOT managed here. Use /api/inventory endpoints to manage stock.
-    Variants define product options (size, color, etc.) and optional pricing.
+    NOTE: Variant stock_quantity must not exceed product inventory.
+    Variants define product options (size, color, etc.), pricing, and allocated stock.
     """
     try:
         # Parse attributes JSON if provided
@@ -571,12 +656,13 @@ def add_product_variant(
             variant_name=variant_name,
             attributes=attributes_dict,
             price=price,
+            stock_quantity=stock_quantity,
             image_url=image_url_str,
             sort_order=sort_order
         )
         
         variant = ProductService.add_variant(db, product_id, variant_data)
-        return variant
+        return transform_variant_with_stock(variant)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -591,6 +677,7 @@ def update_product_variant(
     sku: Optional[str] = Form(None),
     attributes: Optional[str] = Form(None),
     price: Optional[Decimal] = Form(None),
+    stock_quantity: Optional[int] = Form(None),
     sort_order: Optional[int] = Form(None),
     variant_image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -600,11 +687,11 @@ def update_product_variant(
     Update a product variant - requires products:update permission.
     
     Accepts multipart/form-data with optional fields:
-    - variant_name, sku, price, sort_order
+    - variant_name, sku, price, stock_quantity, sort_order
     - attributes as JSON string
     - variant_image file upload (will replace existing image)
     
-    NOTE: Stock is NOT managed here. Use /api/inventory endpoints to manage stock.
+    NOTE: Variant stock_quantity must not exceed product inventory.
     """
     try:
         # Parse attributes JSON if provided
@@ -631,6 +718,7 @@ def update_product_variant(
             variant_name=variant_name,
             attributes=attributes_dict,
             price=price,
+            stock_quantity=stock_quantity,
             image_url=image_url_str,
             sort_order=sort_order
         )
@@ -641,7 +729,7 @@ def update_product_variant(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Variant not found"
             )
-        return variant
+        return transform_variant_with_stock(variant)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

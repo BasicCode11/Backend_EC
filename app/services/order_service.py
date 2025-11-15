@@ -22,6 +22,7 @@ from app.schemas.order import (
 from app.core.exceptions import ValidationError, NotFoundError
 from app.services.audit_log_service import AuditLogService
 from app.services.inventory_service import InventoryService
+from app.services.stock_validation_service import StockValidationService
 
 
 class OrderService:
@@ -155,26 +156,41 @@ class OrderService:
 
         db.flush()
 
-        # 5. Fulfill inventory (reduce both reserved and stock quantities)
+        # 5. Fulfill inventory (reduce stock from both inventory AND variant)
         for cart_item in cart.items:
             inventory = db.query(Inventory).filter(
                 Inventory.product_id == cart_item.product_id
             ).first()
             
-            # Reduce both reserved and stock
+            # Release reserved quantity first
             inventory.reserved_quantity -= cart_item.quantity
-            inventory.stock_quantity -= cart_item.quantity
+            
+            # Use StockValidationService to reduce stock from both inventory and variant
+            updated_inventory, updated_variant = StockValidationService.reduce_stock(
+                db=db,
+                product_id=cart_item.product_id,
+                variant_id=cart_item.variant_id,
+                quantity=cart_item.quantity
+            )
             
             db.flush()
 
             # Log inventory fulfillment
+            log_message = (
+                f"Fulfilled {cart_item.quantity} units for order {order.order_number}. "
+                f"Inventory stock: {updated_inventory.stock_quantity}, "
+                f"Reserved: {updated_inventory.reserved_quantity}"
+            )
+            
+            if updated_variant:
+                log_message += f", Variant '{updated_variant.variant_name}' stock: {updated_variant.stock_quantity}"
+            
             AuditLogService.log_create(
                 db=db,
                 user_id=current_user.id,
                 entity_type="ORDER_FULFILLED",
                 entity_id=inventory.id,
-                new_values=f"Fulfilled {cart_item.quantity} units for order {order.order_number}. "
-                        f"Stock: {inventory.stock_quantity}, Reserved: {inventory.reserved_quantity}"
+                new_values=log_message
             )
 
         # 6. Clear cart

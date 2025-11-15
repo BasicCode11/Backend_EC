@@ -24,6 +24,7 @@ class ProductVariant(Base):
     variant_name: Mapped[str] = mapped_column(String(255), nullable=False)
     attributes: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     price: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 2), nullable=True)
+    stock_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # Database column (to be migrated)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[DateTime] = mapped_column(
@@ -68,21 +69,23 @@ class ProductVariant(Base):
         """Get effective price (variant price or product price)"""
         return self.price if self.price is not None else self.product.price
 
-    @property
-    def stock_quantity(self) -> int:
-        """
-        Get total stock quantity from Inventory table.
-        
-        IMPORTANT: This queries the Inventory table for the parent product.
-        Stock is managed via Inventory, not stored on the variant itself.
-        """
-        if not self.product or not self.product.inventory:
-            return 0
-        return sum(inv.available_quantity for inv in self.product.inventory)
+    # NOTE: stock_quantity is now a database column, not a computed property
+    # This will be migrated to the Inventory table in a future update
+    # @property
+    # def stock_quantity(self) -> int:
+    #     """
+    #     Get total stock quantity from Inventory table.
+    #     
+    #     IMPORTANT: This queries the Inventory table for the parent product.
+    #     Stock is managed via Inventory, not stored on the variant itself.
+    #     """
+    #     if not self.product or not self.product.inventory:
+    #         return 0
+    #     return sum(inv.available_quantity for inv in self.product.inventory)
 
     @property
     def is_in_stock(self) -> bool:
-        """Check if variant has available stock in inventory"""
+        """Check if variant has available stock"""
         return self.stock_quantity > 0
 
     @property
