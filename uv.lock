@@ -183,6 +183,20 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudinary"
+version = "1.44.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "six" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/32/35/938a4cc3b5ac386184a8ea50e357cdbb4239c2744fc8c652c461674447e6/cloudinary-1.44.1.tar.gz", hash = "sha256:62d4374b79d5476de2a86cb6a1da709a5429e02aef474bfc5d99f3e38a1a62ff", size = 188225, upload-time = "2025-06-17T16:31:33.279Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/f0/518d151d3dfc009940947fe9b26cdf9f6e2fb9e4a29c12fe5b5ebe8aad65/cloudinary-1.44.1-py3-none-any.whl", hash = "sha256:b4785031179a5ec7010f46665e5c8fad2cae022c18405546f01d257e02f78b1c", size = 147808, upload-time = "2025-06-17T16:31:32.188Z" },
+]
+
+[[package]]
 name = "cms-backend"
 version = "0.1.0"
 source = { virtual = "." }
@@ -190,6 +204,7 @@ dependencies = [
     { name = "alembic" },
     { name = "apscheduler" },
     { name = "bcrypt" },
+    { name = "cloudinary" },
     { name = "faker" },
     { name = "fastapi" },
     { name = "loguru" },
@@ -213,6 +228,7 @@ requires-dist = [
     { name = "alembic", specifier = "==1.11.1" },
     { name = "apscheduler", specifier = "==3.11.1" },
     { name = "bcrypt", specifier = "==4.0.1" },
+    { name = "cloudinary", specifier = ">=1.44.1" },
     { name = "faker", specifier = "==37.8.0" },
     { name = "fastapi", specifier = "==0.111.0" },
     { name = "loguru", specifier = "==0.7.3" },
@@ -997,6 +1013,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/30/ed/5a057199fb0a5deabe0957073a1c1c1c02a3e99476cd03daee98ea21fa57/ujson-5.11.0-cp314-cp314t-win32.whl", hash = "sha256:aa6d7a5e09217ff93234e050e3e380da62b084e26b9f2e277d2606406a2fc2e5", size = 41859, upload-time = "2025-08-20T11:56:30.495Z" },
     { url = "https://files.pythonhosted.org/packages/aa/03/b19c6176bdf1dc13ed84b886e99677a52764861b6cc023d5e7b6ebda249d/ujson-5.11.0-cp314-cp314t-win_amd64.whl", hash = "sha256:48055e1061c1bb1f79e75b4ac39e821f3f35a9b82de17fce92c3140149009bec", size = 46183, upload-time = "2025-08-20T11:56:31.574Z" },
     { url = "https://files.pythonhosted.org/packages/5d/ca/a0413a3874b2dc1708b8796ca895bf363292f9c70b2e8ca482b7dbc0259d/ujson-5.11.0-cp314-cp314t-win_arm64.whl", hash = "sha256:1194b943e951092db611011cb8dbdb6cf94a3b816ed07906e14d3bc6ce0e90ab", size = 40264, upload-time = "2025-08-20T11:56:32.773Z" },
+]
+
+[[package]]
+name = "urllib3"
+version = "2.5.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/22/9ee70a2574a4f4599c47dd506532914ce044817c7752a79b6a51286319bc/urllib3-2.5.0.tar.gz", hash = "sha256:3fc47733c7e419d4bc3f6b3dc2b4f890bb743906a30d56ba4a5bfa4bbff92760", size = 393185, upload-time = "2025-06-18T14:07:41.644Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a7/c2/fe1e52489ae3122415c51f387e221dd0773709bad6c6cdaa599e8a2c5185/urllib3-2.5.0-py3-none-any.whl", hash = "sha256:e6b01673c0fa6a13e374b50871808eb3bf7046c4b125b216f6bf1cc604cff0dc", size = 129795, upload-time = "2025-06-18T14:07:40.39Z" },
 ]
 
 [[package]]

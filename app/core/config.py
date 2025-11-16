@@ -4,7 +4,8 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 from datetime import timedelta
-
+import cloudinary
+import cloudinary.uploader
 
 class Settings(BaseSettings):
     # Security
@@ -83,6 +84,9 @@ class Settings(BaseSettings):
     ABA_PAYWAY_RETURN_URL: str = Field(default="http://localhost:3000/payment/callback", env="ABA_PAYWAY_RETURN_URL")
     ABA_PAYWAY_CONTINUE_URL: str = Field(default="http://localhost:3000/payment/success", env="ABA_PAYWAY_CONTINUE_URL")
     ABA_PAYWAY_CANCEL_URL: str = Field(default="http://localhost:3000/payment/cancel", env="ABA_PAYWAY_CANCEL_URL")
+    CLOUDINARY_CLOUD_NAME: str = Field(..., env="CLOUDINARY_CLOUD_NAME")
+    CLOUDINARY_API_KEY: str = Field(..., env="CLOUDINARY_API_KEY")
+    CLOUDINARY_API_SECRET: str = Field(..., env="CLOUDINARY_API_SECRET")
 
     @property
     def web_inactivity_timeout(self) -> timedelta:
@@ -101,3 +105,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+# Configure Cloudinary AFTER loading settings
+cloudinary.config(
+    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+    api_key=settings.CLOUDINARY_API_KEY,
+    api_secret=settings.CLOUDINARY_API_SECRET
+)

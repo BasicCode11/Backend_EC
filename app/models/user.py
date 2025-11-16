@@ -17,6 +17,7 @@ class User(Base):
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id", ondelete="CASCADE"), nullable=False)
     phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     picture: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    picture_public_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[DateTime] = mapped_column(

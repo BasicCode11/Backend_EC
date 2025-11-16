@@ -176,8 +176,15 @@ class UserService:
             raise ValidationError("User not found")
         
         if picture:
-            LogoUpload._delete_logo(db_user.picture)
-            db_user.picture = LogoUpload._save_image(picture)
+            # Delete old image if exists
+            if db_user.picture_public_id:
+                LogoUpload._delete_logo(db_user.picture_public_id)
+
+            # Upload new image to Cloudinary
+            cloud = LogoUpload._save_image(picture)
+            db_user.picture = cloud["url"]
+            db_user.picture_public_id = cloud["public_id"]
+
 
         # Store old values for audit
         old_values = {

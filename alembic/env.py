@@ -47,7 +47,23 @@ DB_NAME = os.getenv("DB_NAME")
 
 # URL-encode the password to handle special characters like @
 encoded_password = quote_plus(DB_PASSWORD) if DB_PASSWORD else ""
-DATABASE_URL = f"{DB_TYPE}+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+# Select appropriate driver based on DB_TYPE
+if DB_TYPE == "postgresql":
+    driver = "psycopg2"
+    # Add SSL mode for PostgreSQL if specified
+    ssl_params = []
+    if os.getenv("DB_SSLMODE"):
+        ssl_params.append(f"sslmode={os.getenv('DB_SSLMODE')}")
+    if os.getenv("DB_CHANNEL_BINDING"):
+        ssl_params.append(f"channel_binding={os.getenv('DB_CHANNEL_BINDING')}")
+    ssl_query = f"?{'&'.join(ssl_params)}" if ssl_params else ""
+    DATABASE_URL = f"{DB_TYPE}+{driver}://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}{ssl_query}"
+elif DB_TYPE == "mysql":
+    driver = "pymysql"
+    DATABASE_URL = f"{DB_TYPE}+{driver}://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+else:
+    raise ValueError(f"Unsupported DB_TYPE: {DB_TYPE}")
 
 # Override sqlalchemy.url in config (escape % for configparser)
 # ConfigParser uses % for interpolation, so we need to escape it

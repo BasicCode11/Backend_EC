@@ -1,44 +1,56 @@
-import os
 import uuid
-import os
-from fastapi import HTTPException, status  , UploadFile
-LOGO_UPLOAD_URL = "app/static/images/"
+from fastapi import HTTPException, status, UploadFile
+import cloudinary.uploader
 
 class LogoUpload:
-    @staticmethod 
-    def _save_image(image: UploadFile) -> str:
+
+    @staticmethod
+    def _save_image(image: UploadFile) -> dict:
+        """
+        Upload image to Cloudinary and return dict:
+        {
+            "url": "...",
+            "public_id": "logos/logo_xxx"
+        }
+        """
         allow_types = ["image/png", "image/jpeg", "image/jpg"]
+
         if image.content_type not in allow_types:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Unsupported file type. Only PNG, JPG, and JPEG are allowed."
             )
-        os.makedirs(LOGO_UPLOAD_URL, exist_ok=True)
-        file_extension = os.path.splitext(image.filename)[1]
-        unique_name = f"{uuid.uuid4()}{file_extension}"
-        save_path = os.path.join(LOGO_UPLOAD_URL, unique_name)
+
+        ext = image.filename.split(".")[-1]
+        unique_name = f"logo_{uuid.uuid4()}.{ext}"
 
         try:
-            with open(save_path, "wb") as buffer:
-                buffer.write(image.file.read())
-
+            upload_result = cloudinary.uploader.upload(
+                image.file,
+                public_id=f"logos/{unique_name}",  # full path
+                overwrite=True
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to save image: {str(e)}"
+                detail=f"Failed to upload image: {str(e)}"
             )
-        
-        return f"/static/images/{unique_name}"
-    
+
+        return {
+            "url": upload_result["secure_url"],
+            "public_id": upload_result["public_id"]
+        }
 
     @staticmethod
-    def _delete_logo(image_path: str):
-        """Delete a logo file from disk if it exists."""
-        if not image_path:
+    def _delete_logo(public_id: str):
+        """
+        Delete image from Cloudinary using its public_id:
+        e.g. logos/logo_123.png
+        """
+        if not public_id:
             return
-        real_path = image_path.replace("/static", "app/static")
-        if os.path.exists(real_path):
-            try:
-                os.remove(real_path)
-            except Exception:
-                pass
+
+        try:
+            cloudinary.uploader.destroy(public_id)
+        except Exception:
+            pass
