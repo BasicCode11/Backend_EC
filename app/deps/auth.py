@@ -112,20 +112,3 @@ def require_permission(required_permissions: List[str]):
 
         return current_user
     return permission_checker
-
-
-# NOTE: Team/Agent features removed - not applicable for e-commerce platform
-# If you need multi-tenant support, add team_id field to User model first
-
-# Commented out for now - uncomment and modify User model if needed:
-# def require_team_access(resource_team_id: int):
-#     """Check if the resource belongs to user's team"""
-#     def team_checker(current_user: User = Depends(get_current_active_user)) -> User:
-#         if not hasattr(current_user, 'team_id') or not current_user.team_id:
-#             raise HTTPException(status_code=400, detail="User has no team assigned")
-#         if current_user.team_id != resource_team_id:
-#             raise TeamAccessDeniedException(
-#                 f"Resource belongs to team {resource_team_id}, but you are in team {current_user.team_id}"
-#             )
-#         return current_user
-#     return team_checker

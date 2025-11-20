@@ -1,8 +1,9 @@
-
+from fastapi import HTTPException, status
 from typing import List, Optional
 from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 from app.models.role import Role
+from app.schemas.role import RoleCreate, RoleUpdate , RoleOut
 from app.models.permission import Permission
 from app.models.role_has_permision import role_has_permission
 from app.services.audit_log_service import AuditLogService
@@ -27,13 +28,26 @@ class RoleService:
     
 
     @staticmethod
-    def create(db: Session,  current_user: User,name: str, description: Optional[str] = None) -> Role:
+    def create(db: Session,  role_data: RoleCreate ,current_user: User,) -> RoleOut:
         """Create a new role."""
-        existing = db.execute(select(Role).where(Role.name == name)).scalars().first()
+        existing = db.execute(select(Role).where(Role.name == role_data.name)).scalars().first()
         if existing:
             raise ValueError("Role with this name already exists")
-        role = Role(name=name, description=description)
+        role = Role(name=role_data.name, description=role_data.description)
+        if role_data.permission_ids:
+            permissions = db.query(Permission).filter(
+                Permission.id.in_(role_data.permission_ids)
+            ).all()
 
+            if not permissions and role_data.permission_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Some permissions not found"
+                )
+
+            role.permissions = permissions
+
+            
         db.add(role)
         db.commit()
         db.refresh(role)
@@ -52,28 +66,40 @@ class RoleService:
         return role
     
     @staticmethod
-    def update(db: Session, role_id: int, current_user: User,name: str, description: Optional[str] = None) -> Optional[Role]:
+    def update(db: Session, role_id: int, role_data: RoleUpdate,current_user: User) -> Optional[Role]:
         """Update an existing role."""
-        role = db.get(Role, role_id)
+        role = RoleService.get_by_id(db, role_id)
         if not role:
-            return None
-        
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Role with id {role_id} not found"
+            )
         #auth log old data 
         old_values = {
             "name": role.name,
             "description": role.description
         }
+        if role_data.name is not None:
+            role.name = role_data.name
+        if role_data.description is not None:
+            role.description = role_data.description
 
+        if hasattr(role_data, 'permission_ids') and role_data.permission_ids is not None:
+            permissions = db.query(Permission).filter(Permission.id.in_(role_data.permission_ids)).all()
+
+            if not permissions and role_data.permission_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Some permissions not found"
+                )
+            # Replace role permissions
+            role.permissions = permissions
         #audit log new data 
         new_values = {
-            "name": name,
-            "description": description
+            "name": role_data.name,
+            "description": role_data.description
         }
-        if name is not None:
-            role.name = name
-        if description is not None:
-            role.description = description
-
+        
         db.commit()
         db.refresh(role)
 
@@ -90,10 +116,19 @@ class RoleService:
     @staticmethod
     def delete(db: Session, role_id: int , current_user: User) -> bool:
         """Delete a role."""
-        role = db.get(Role, role_id)
+        role = db.query(Role).filter(Role.id == role_id).first()
         if not role:
-            return
-        
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Role not found"
+            )
+        user_count = db.query(User).filter(User.role_id == role_id).count()
+        if user_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete role because it has assigned users."
+            )
+    
         #auth log old data 
         AuditLogService.log_delete(
             db=db,
@@ -107,6 +142,7 @@ class RoleService:
         )
         db.delete(role)
         db.commit()
+        return {"message": f"Role '{role.name}' deleted successfully."}
 
     
     @staticmethod
@@ -134,23 +170,3 @@ class RoleService:
 
         db.commit()
         return True
-    
-    @staticmethod
-    def get_permissions(db: Session, role_id: int) -> List[Permission]:
-        """Get permissions assigned to a role."""
-        role = db.get(Role, role_id)
-        if not role:
-            return []
-        return role.permissions
-    
-    @staticmethod
-    def remove_permission(db: Session, role_id: int, permission_id: int) -> bool:
-        """Remove a specific permission from a role."""
-        result = db.execute(
-            delete(role_has_permission).where(
-                role_has_permission.c.role_id == role_id,
-                role_has_permission.c.permission_id == permission_id
-            )
-        )
-        db.commit()
-        return result.rowcount > 0

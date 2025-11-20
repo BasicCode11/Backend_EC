@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.role import Role
 from app.models.user import User
 from ..deps.role import check_permissions
+from ..deps.auth import get_current_user
 from app.database import get_db
 from ..services.role_service import RoleService
 from app.models.permission import Permission
@@ -16,7 +17,8 @@ router = APIRouter()
 @router.get("/roles", response_model=List[RoleOut])
 def list_roles(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["roles:read"])),
+    _: str = Depends(check_permissions(["roles:read"])),
+    current_user: User = Depends(get_current_user)
 ) -> List[RoleOut]:
     """List all roles. Requires roles:read permission."""
     roles = RoleService.get_all(db)
@@ -26,7 +28,6 @@ def list_roles(
 def get_role(
     role_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["roles:read"])),
 ) -> RoleOut:
     """Get specific role by ID. Requires roles:read permission."""
     role = db.query(Role).filter(Role.id == role_id).first()
@@ -97,7 +98,7 @@ def create_role(
         )
 
     try:
-        role = RoleService.create(db, current_user ,role_data.name, role_data.description )
+        role = RoleService.create(db = db, role_data=role_data, current_user=current_user)
         return role
     except ValueError as e:
         raise HTTPException(
@@ -170,9 +171,8 @@ def update_role(
     role = RoleService.update(
         db=db,
         role_id=role_id,
+        role_data=role_data,
         current_user=current_user,
-        name=role_data.name,
-        description=role_data.description
     )
 
     if not role:
