@@ -70,7 +70,10 @@ class AddressService:
 
     @staticmethod
     def delete_for_user(db: Session, user_id: int, address_id: int) -> None:
-        address = AddressService.get_for_user(db, user_id, address_id)
+        address = db.query(UserAddress).filter(
+            UserAddress.user_id == user_id,
+            UserAddress.id == address_id
+        ).first()
         if not address:
             raise ValidationError("Address not found")
         db.delete(address)
