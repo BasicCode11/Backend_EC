@@ -129,8 +129,15 @@ class UserService:
 
         hashed_pw = hash_password(user_data.password)
 
-        picture_url = LogoUpload._save_image(picture) if picture else None
-
+        if picture:
+            cloud = LogoUpload._save_image(picture)
+            picture_url = cloud["url"]
+            picture__url_public_id = cloud["public_id"]
+        
+        else:
+            picture_url = None
+            picture__url_public_id = None
+        
         db_user = User(
             uuid=str(uuid.uuid4()),
             email=user_data.email,
@@ -139,6 +146,7 @@ class UserService:
             last_name=user_data.last_name,
             phone=user_data.phone,
             picture=picture_url,
+            picture_public_id = picture__url_public_id,
             role_id=user_data.role_id,
             email_verified=True  # Admin created users are auto-verified
         )
