@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 class AddressBase(BaseModel):
-    address_type: str = Field(default="home")
+    address_type: Optional[str] = None
     label: Optional[str] = None
     recipient_name: Optional[str] = None
     company: Optional[str] = None
@@ -12,7 +12,7 @@ class AddressBase(BaseModel):
     apartment_suite: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
-    country: str = Field(default="KHR")
+    country: Optional[str] = None
     postal_code: Optional[str] = None
     longitude: Optional[float] = Field(None, ge=-180, le=180, description="Longitude must be between -180 and 180")
     latitude: Optional[float] = Field(None, ge=-90, le=90, description="Latitude must be between -90 and 90")

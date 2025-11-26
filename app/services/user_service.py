@@ -1,10 +1,10 @@
-from typing import List, Optional 
-from sqlalchemy import select, or_  
+from typing import Optional
+from sqlalchemy import select
 from sqlalchemy.orm import Session , selectinload
 from app.models.user import User
-from app.core.security import hash_password, verify_password
-from app.schemas.user import UserCreate, UserUpdate, UserSearchParams, UserSelfUpdate , UserProfileBundle , UserResponse , RoleOut , UserWithPerPage
-from app.core.exceptions import ValidationError, ForbiddenException
+from app.core.security import hash_password
+from app.schemas.user import UserCreate, UserUpdate, UserSearchParams , UserProfileBundle , UserResponse , RoleOut , UserWithPerPage
+from app.core.exceptions import ValidationError
 import uuid
 from app.schemas.address import AddressResponse, AddressCreate , AddressUpdate
 from app.services.address_service import AddressService
@@ -129,14 +129,14 @@ class UserService:
 
         hashed_pw = hash_password(user_data.password)
 
+        picture_url = None
+        picture__url_public_id = None
+
         if picture:
             cloud = LogoUpload._save_image(picture)
             picture_url = cloud["url"]
             picture__url_public_id = cloud["public_id"]
-        
-        else:
-            picture_url = None
-            picture__url_public_id = None
+
         
         db_user = User(
             uuid=str(uuid.uuid4()),

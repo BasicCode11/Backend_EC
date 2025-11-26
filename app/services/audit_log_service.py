@@ -264,19 +264,3 @@ class AuditLogService:
         )
         return AuditLogService.get_all(db, filters)
 
-    @staticmethod
-    def get_entity_history(
-        db: Session,
-        entity_type: str,
-        entity_id: int,
-        page: int = 1,
-        limit: int = 50
-    ) -> AuditLogWithPagination:
-        """Get all audit logs for a specific entity"""
-        filters = AuditLogFilter(
-            entity_type=entity_type,
-            entity_id=entity_id,
-            page=page,
-            limit=limit
-        )
-        return AuditLogService.get_all(db, filters)
