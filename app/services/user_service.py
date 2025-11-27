@@ -128,15 +128,14 @@ class UserService:
             raise ValidationError("Email already exists")
 
         hashed_pw = hash_password(user_data.password)
+        picture_url = None
+        picture__url_public_id = None
 
         if picture:
             cloud = LogoUpload._save_image(picture)
             picture_url = cloud["url"]
             picture__url_public_id = cloud["public_id"]
-        
-        else:
-            picture_url = None
-            picture__url_public_id = None
+            
         
         db_user = User(
             uuid=str(uuid.uuid4()),
