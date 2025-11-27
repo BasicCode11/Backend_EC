@@ -1,7 +1,8 @@
 import uuid
 from fastapi import HTTPException, status, UploadFile
 import cloudinary.uploader
-
+import logging
+logger = logging.getLogger(__name__)
 class LogoUpload:
 
     @staticmethod
@@ -48,9 +49,18 @@ class LogoUpload:
         e.g. logos/logo_123.png
         """
         if not public_id:
-            return
+            logger.warning("No public_id passed → skip deleting")
+            return False
 
         try:
-            cloudinary.uploader.destroy(public_id)
-        except Exception:
-            pass
+            result = cloudinary.uploader.destroy(public_id)
+            logger.info(f"Cloudinary delete result: {result}")
+
+            # Cloudinary returns:
+            # { "result": "ok" } → image deleted
+            # { "result": "not found" } → wrong public_id
+            return result.get("result") == "ok"
+
+        except Exception as e:
+            logger.error(f"Cloudinary deletion error: {str(e)}")
+            return False

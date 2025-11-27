@@ -45,6 +45,14 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "3306")
 DB_NAME = os.getenv("DB_NAME")
 
+# Validate required environment variables
+if not DB_USER:
+    raise ValueError("DB_USER environment variable is required")
+if not DB_PASSWORD:
+    raise ValueError("DB_PASSWORD environment variable is required")
+if not DB_NAME:
+    raise ValueError("DB_NAME environment variable is required")
+
 # URL-encode the password to handle special characters like @
 encoded_password = quote_plus(DB_PASSWORD) if DB_PASSWORD else ""
 
@@ -61,7 +69,7 @@ if DB_TYPE == "postgresql":
     DATABASE_URL = f"{DB_TYPE}+{driver}://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}{ssl_query}"
 elif DB_TYPE == "mysql":
     driver = "pymysql"
-    DATABASE_URL = f"{DB_TYPE}+{driver}://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    DATABASE_URL = f"{DB_TYPE}+{driver}://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
 else:
     raise ValueError(f"Unsupported DB_TYPE: {DB_TYPE}")
 

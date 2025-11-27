@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, UploadFile, File, Form
+from sqlalchemy import null
 from sqlalchemy.orm import Session
 from math import ceil
 from decimal import Decimal
@@ -19,7 +20,8 @@ from app.schemas.product import (
     ProductVariantCreate,
     ProductVariantUpdate,
     ProductVariantResponse,
-    ProductStatus
+    ProductStatus,
+    InventoryCreate,
 )
 from app.services.product_service import ProductService
 from app.services.file_service import LogoUpload
@@ -183,7 +185,12 @@ def list_products(
     status: Optional[ProductStatus] = None,
     category_id: Optional[int] = None,
     featured: Optional[bool] = None,
+    search: Optional[str] = Query(
+        None,
+        description="Filter by product name/description/brand (case-insensitive substring match)"
+    ),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(["products:read"]))
 ):
     """
     List all products with pagination and optional filters.
@@ -193,6 +200,7 @@ def list_products(
     - **status**: Filter by product status (active, inactive, draft)
     - **category_id**: Filter by category ID
     - **featured**: Filter by featured status
+    - **search**: Case-insensitive substring match across name, description, brand
     
     Returns products with primary_image and category object.
     """
@@ -205,13 +213,14 @@ def list_products(
         limit=limit,
         status=status_value,
         category_id=category_id,
-        featured=featured
+        featured=featured,
+        search=search
     )
     
     pages = ceil(total / limit) if total > 0 else 0
     
-    # Transform products to include primary_image and category
-    items = [transform_product_with_primary_image(p) for p in products]
+    # Transform products to include images, variants, and inventory
+    items = [transform_product_with_details(p) for p in products]
     
     return {
         "items": items,
@@ -245,8 +254,8 @@ def search_products(
     products, total = ProductService.search(db, params)
     pages = ceil(total / params.limit) if total > 0 else 0
     
-    # Transform products to include primary_image and category
-    items = [transform_product_with_primary_image(p) for p in products]
+    # Transform products to include images, variants, and inventory
+    items = [transform_product_with_details(p) for p in products]
     
     return {
         "items": items,
@@ -257,14 +266,18 @@ def search_products(
     }
 
 
-@router.get("/products/featured", response_model=List[ProductResponse])
+@router.get("/products/featured", response_model=List[ProductWithDetails])
 def list_featured_products(
-    limit: int = Query(10, ge=1, le=50),
+    limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    """Get featured products with primary image and category"""
+    """
+    Get featured products for customer view.
+    Includes product details with images, inventory, and variants so the
+    storefront can display full product information.
+    """
     products = ProductService.get_featured_products(db, limit)
-    return [transform_product_with_primary_image(p) for p in products]
+    return [transform_product_with_details(p) for p in products]
 
 
 @router.get("/products/by-category", response_model=List[ProductResponse])
@@ -378,15 +391,24 @@ def create_product(
                 dimensions_dict = json.loads(dimensions)
             except json.JSONDecodeError:
                 raise ValidationError("Invalid JSON format for dimensions")
-        # Parse inventory JSON if provided
-        inventory_dict = None
+        # Parse inventory JSON if provided (supports single object or list)
+        inventory_list = []
         if inventory:
             try:
-                inventory_dict = json.loads(inventory)
-                if not isinstance(inventory_dict, dict):
-                    raise ValidationError("Inventory must be a JSON object")
+                parsed_inventory = json.loads(inventory)
             except json.JSONDecodeError as e:
                 raise ValidationError(f"Invalid JSON format for inventory: {str(e)}")
+
+            if isinstance(parsed_inventory, dict):
+                parsed_inventory = [parsed_inventory]
+            elif isinstance(parsed_inventory, list):
+                if not all(isinstance(item, dict) for item in parsed_inventory):
+                    raise ValidationError("Each inventory entry must be an object")
+            else:
+                raise ValidationError("Inventory must be a JSON object or array of objects")
+
+            for inventory_item in parsed_inventory:
+                inventory_list.append(InventoryCreate(**inventory_item))
             
         # Parse variants JSON if provided
         variant_data_list = []
@@ -399,11 +421,13 @@ def create_product(
                 for idx, variant_item in enumerate(variants_list):
                     # Check if there's a corresponding variant image file
                     variant_image_url = variant_item.get("image_url")
+                    variant_image_public_id = variant_item.get("image_public_id")
                     if variant_images and idx < len(variant_images):
                         variant_image_file = variant_images[idx]
                         if variant_image_file.filename:
-                            variant_image_url = LogoUpload._save_image(variant_image_file)
-                    
+                            cloud = LogoUpload._save_image(variant_image_file)
+                            variant_image_url = cloud["url"]
+                            variant_image_public_id = cloud["public_id"]
                     variant_data_list.append(
                         ProductVariantCreate(
                             sku=variant_item.get("sku"),
@@ -411,6 +435,7 @@ def create_product(
                             attributes=variant_item.get("attributes"),
                             price=variant_item.get("price"),
                             image_url=variant_image_url,
+                            image_public_id=variant_image_public_id,
                             sort_order=variant_item.get("sort_order", 0)
                         )
                     )
@@ -424,10 +449,11 @@ def create_product(
         if images:
             for idx, image_file in enumerate(images):
                 if image_file.filename:  # Check if file is actually uploaded
-                    image_url = LogoUpload._save_image(image_file)
+                    cloud = LogoUpload._save_image(image_file)
                     image_data_list.append(
                         ProductImageCreate(
-                            image_url=image_url,
+                            image_url=cloud["url"],
+                            image_public_id=cloud["public_id"],
                             alt_text=f"{name} image {idx + 1}",
                             sort_order=idx,
                             is_primary=(idx == 0)  # First image is primary
@@ -449,7 +475,7 @@ def create_product(
             status=ProductStatus(product_status),
             images=image_data_list,
             variants=variant_data_list,
-            inventory=inventory_dict
+            inventory=inventory_list
         )
         
         product = ProductService.create(db, product_data, current_user, ip_address, user_agent)
@@ -574,11 +600,12 @@ def add_product_image(
     """
     try:
         # Upload the image file
-        image_url = LogoUpload._save_image(image)
+        cloud = LogoUpload._save_image(image)
         
         # Create image data
         image_data = ProductImageCreate(
-            image_url=image_url,
+            image_url=cloud["url"],
+            image_public_id=cloud["public_id"],
             alt_text=alt_text,
             sort_order=sort_order,
             is_primary=is_primary
@@ -647,8 +674,11 @@ def add_product_variant(
         
         # Upload variant image if provided
         image_url_str = None
+        image_public_id = None
         if variant_image and variant_image.filename:
-            image_url_str = LogoUpload._save_image(variant_image)
+            cloud = LogoUpload._save_image(variant_image)
+            image_url_str = cloud["url"]
+            image_public_id = cloud["public_id"]
         
         # Create variant data object
         variant_data = ProductVariantCreate(
@@ -658,6 +688,7 @@ def add_product_variant(
             price=price,
             stock_quantity=stock_quantity,
             image_url=image_url_str,
+            image_public_id=image_public_id,
             sort_order=sort_order
         )
         
@@ -704,13 +735,16 @@ def update_product_variant(
         
         # Upload new variant image if provided
         image_url_str = None
+        image_public_id = None
         if variant_image and variant_image.filename:
             # Get old variant to delete old image
             old_variant = db.get(ProductVariant, variant_id)
-            if old_variant and old_variant.image_url:
-                LogoUpload._delete_logo(old_variant.image_url)
+            if old_variant and old_variant.image_public_id:
+                LogoUpload._delete_logo(old_variant.image_public_id)
             
-            image_url_str = LogoUpload._save_image(variant_image)
+            cloud = LogoUpload._save_image(variant_image)
+            image_url_str = cloud["url"]
+            image_public_id = cloud["public_id"]
         
         # Create update data object
         variant_data = ProductVariantUpdate(
@@ -720,6 +754,7 @@ def update_product_variant(
             price=price,
             stock_quantity=stock_quantity,
             image_url=image_url_str,
+            image_public_id=image_public_id,
             sort_order=sort_order
         )
         
@@ -757,8 +792,8 @@ def delete_product_variant(
         )
     
     # Delete variant image from filesystem if exists
-    if variant.image_url:
-        LogoUpload._delete_logo(variant.image_url)
+    if variant.image_public_id:
+        LogoUpload._delete_logo(variant.image_public_id)
     
     # Delete variant from database
     success = ProductService.delete_variant(db, variant_id)

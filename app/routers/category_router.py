@@ -132,7 +132,12 @@ def create_category(
 @router.put("/categories/{category_id}", response_model=CategoryResponse)
 def update_category(
     category_id: int,
-    category_data: CategoryUpdate,
+    name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    parent_id: Optional[int] = Form(None),
+    image_url: Optional[UploadFile] = File(None),
+    is_active: Optional[bool] = Form(None),
+    sort_order: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["categories:update"]))
 ):
@@ -142,7 +147,14 @@ def update_category(
     All fields are optional. Only provided fields will be updated.
     """
     try:
-        category = CategoryService.update(db, category_id, category_data)
+        category_data = CategoryUpdate(
+            name=name,
+            description=description,
+            parent_id=parent_id,
+            is_active=is_active,
+            sort_order=sort_order
+        )
+        category = CategoryService.update(db, category_id, category_data, current_user, image_url)
         if not category:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
