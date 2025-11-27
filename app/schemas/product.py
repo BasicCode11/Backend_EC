@@ -4,7 +4,6 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-
 class ProductStatus(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
@@ -14,6 +13,7 @@ class ProductStatus(str, Enum):
 # Product Image Schemas
 class ProductImageBase(BaseModel):
     image_url: str = Field(..., max_length=500)
+    image_public_id: Optional[str] = Field(None, max_length=255)
     alt_text: Optional[str] = Field(None, max_length=255)
     sort_order: int = 0
     is_primary: bool = False
@@ -45,6 +45,7 @@ class ProductVariantBase(BaseModel):
     attributes: Optional[Dict[str, Any]] = None
     price: Optional[Decimal] = Field(None, ge=0)
     image_url: Optional[str] = Field(None, max_length=500)
+    image_public_id: Optional[str] = Field(None, max_length=255)
     sort_order: int = 0
 
 
@@ -93,18 +94,31 @@ class ProductBase(BaseModel):
     featured: bool = False
     status: ProductStatus = ProductStatus.ACTIVE
 
-    @field_validator('compare_price')
-    @classmethod
-    def validate_compare_price(cls, v, info):
-        if v is not None and 'price' in info.data and v < info.data['price']:
-            raise ValueError('compare_price must be greater than or equal to price')
-        return v
+
+class InventoryCreate(BaseModel):
+    stock_quantity: int = Field(0, ge=0)
+    reserved_quantity: int = Field(0, ge=0)
+    low_stock_threshold: int = Field(10, ge=0)
+    reorder_level: int = Field(5, ge=0)
+    sku: Optional[str] = Field(None, max_length=100)
+    batch_number: Optional[str] = Field(None, max_length=100)
+    expiry_date: Optional[datetime] = None
+    location: Optional[str] = Field(None, max_length=100)
 
 
 class ProductCreate(ProductBase):
-    images: Optional[List[ProductImageCreate]] = []
-    variants: Optional[List[ProductVariantCreate]] = []
-    inventory: Optional[Dict[str, Any]] = None
+    images: List[ProductImageCreate] = Field(default_factory=list)
+    variants: List[ProductVariantCreate] = Field(default_factory=list)
+    inventory: List[InventoryCreate] = Field(default_factory=list)
+
+    @field_validator("inventory", mode="before")
+    @classmethod
+    def ensure_inventory_list(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, dict):
+            return [v]
+        return v
 
 
 class ProductUpdate(BaseModel):
@@ -179,7 +193,7 @@ class ProductWithDetails(ProductResponse):
 
 
 class ProductListResponse(BaseModel):
-    items: List[ProductResponse]
+    items: List[ProductWithDetails]
     total: int
     page: int
     limit: int

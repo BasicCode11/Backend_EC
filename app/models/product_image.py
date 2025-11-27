@@ -15,6 +15,7 @@ class ProductImage(Base):
         index=True
     )
     image_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    image_public_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     alt_text: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

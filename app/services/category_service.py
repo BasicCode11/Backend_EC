@@ -1,4 +1,5 @@
 from typing import List, Optional
+from fastapi import UploadFile 
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session, selectinload
 from app.models.category import Category
@@ -64,7 +65,7 @@ class CategoryService:
         return db.execute(stmt).scalars().all()
 
     @staticmethod
-    def create(db: Session, current_user: User ,category_data: CategoryCreate , image_url: Optional[str] = None) -> Category:
+    def create(db: Session, current_user: User ,category_data: CategoryCreate , image_url: Optional[UploadFile] = None) -> Category:
         """Create a new category"""
         # Validate parent exists if parent_id is provided
         if category_data.parent_id:
@@ -81,15 +82,20 @@ class CategoryService:
         if existing:
             raise ValidationError("Category with this name already exists at this level")
         
-        #upload image category 
-        picture_url = LogoUpload._save_image(image_url) if image_url else None
-        
+        # Upload image category if provided
+        picture_url = None
+        picture_public_id = None
+        if image_url:
+            cloud = LogoUpload._save_image(image_url)
+            picture_url = cloud["url"]
+            picture_public_id = cloud["public_id"]
 
         db_category = Category(
             name=category_data.name,
             description=category_data.description,
             parent_id=category_data.parent_id,
             image_url=picture_url,
+            image_public_id=picture_public_id,
             is_active=category_data.is_active,
             sort_order=category_data.sort_order
         )
@@ -115,29 +121,54 @@ class CategoryService:
         return db_category
 
     @staticmethod
-    def update(db: Session, category_id: int, category_data: CategoryUpdate) -> Optional[Category]:
+    def update(db: Session, category_id: int, category_data: CategoryUpdate, current_user: User, image_url: Optional[UploadFile] = None) -> Optional[Category]:
         """Update a category"""
         db_category = CategoryService.get_by_id(db, category_id)
         if not db_category:
             return None
 
+        # Store old values for audit log
+        old_values = {
+            "name": db_category.name,
+            "description": db_category.description,
+            "parent_id": db_category.parent_id,
+            "image_url": db_category.image_url,
+            "is_active": db_category.is_active,
+            "sort_order": db_category.sort_order
+        }
+
+        # Handle image upload
+        if image_url:
+            # Delete old image if exists
+            if db_category.image_public_id:
+                LogoUpload._delete_logo(db_category.image_public_id)
+            
+            # Upload new image to Cloudinary
+            cloud = LogoUpload._save_image(image_url)
+            db_category.image_url = cloud["url"]
+            db_category.image_public_id = cloud["public_id"]
+
+        # Handle parent_id: convert 0 to None
+        parent_id_to_check = category_data.parent_id
+        if parent_id_to_check == 0:
+            parent_id_to_check = None
+
         # Validate parent exists and prevent circular references
-        if category_data.parent_id is not None:
-            if category_data.parent_id == category_id:
+        if parent_id_to_check is not None:
+            if parent_id_to_check == category_id:
                 raise ValidationError("Category cannot be its own parent")
             
-            if category_data.parent_id != 0:
-                parent = CategoryService.get_by_id(db, category_data.parent_id)
-                if not parent:
-                    raise ValidationError("Parent category not found")
-                
-                # Check if new parent is a descendant of this category
-                if CategoryService._is_descendant(db, category_id, category_data.parent_id):
-                    raise ValidationError("Cannot set a descendant category as parent")
+            parent = CategoryService.get_by_id(db, parent_id_to_check)
+            if not parent:
+                raise ValidationError("Parent category not found")
+            
+            # Check if new parent is a descendant of this category
+            if CategoryService._is_descendant(db, category_id, parent_id_to_check):
+                raise ValidationError("Cannot set a descendant category as parent")
 
         # Check for duplicate name if name is being updated
         if category_data.name:
-            new_parent_id = category_data.parent_id if category_data.parent_id is not None else db_category.parent_id
+            new_parent_id = parent_id_to_check if parent_id_to_check is not None else db_category.parent_id
             existing = CategoryService._get_by_name_and_parent(
                 db, 
                 category_data.name, 
@@ -148,11 +179,35 @@ class CategoryService:
 
         # Update fields
         update_data = category_data.model_dump(exclude_unset=True)
+        # Convert parent_id 0 to None
+        if "parent_id" in update_data and update_data["parent_id"] == 0:
+            update_data["parent_id"] = None
+        
         for field, value in update_data.items():
             setattr(db_category, field, value)
 
         db.commit()
         db.refresh(db_category)
+
+        # Log audit changes
+        new_values = {
+            "name": db_category.name,
+            "description": db_category.description,
+            "parent_id": db_category.parent_id,
+            "image_url": db_category.image_url,
+            "is_active": db_category.is_active,
+            "sort_order": db_category.sort_order
+        }
+        
+        AuditLogService.log_update(
+            db=db,
+            user_id=current_user.id,
+            entity_type="Category",
+            entity_id=db_category.id,
+            old_values=old_values,
+            new_values=new_values
+        )
+
         return db_category
 
     @staticmethod
@@ -169,6 +224,9 @@ class CategoryService:
         # Check if category has products
         if len(db_category.products) > 0:
             raise ValidationError("Cannot delete category with products")
+
+        if db_category.image_public_id:
+            LogoUpload._delete_logo(db_category.image_public_id)
 
         db.delete(db_category)
         db.commit()

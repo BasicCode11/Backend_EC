@@ -29,13 +29,15 @@ class ProductService:
         limit: int = 20,
         status: Optional[str] = None,
         category_id: Optional[int] = None,
-        featured: Optional[bool] = None
+        featured: Optional[bool] = None,
+        search: Optional[str] = None
     ) -> Tuple[List[Product], int]:
         """Get all products with optional filters"""
         query = select(Product).options(
             selectinload(Product.category),
             selectinload(Product.images),
-            selectinload(Product.inventory)
+            selectinload(Product.inventory),
+            selectinload(Product.variants)
         )
 
         if status:
@@ -44,6 +46,15 @@ class ProductService:
             query = query.where(Product.category_id == category_id)
         if featured is not None:
             query = query.where(Product.featured == featured)
+        if search:
+            like_pattern = f"%{search}%"
+            query = query.where(
+                or_(
+                    Product.name.ilike(like_pattern),
+                    Product.description.ilike(like_pattern),
+                    Product.brand.ilike(like_pattern)
+                )
+            )
 
         # Get total count
         count_query = select(func.count()).select_from(query.subquery())
@@ -61,7 +72,8 @@ class ProductService:
         query = select(Product).options(
             selectinload(Product.category),
             selectinload(Product.images),
-            selectinload(Product.inventory)
+            selectinload(Product.inventory),
+            selectinload(Product.variants)
         )
 
         # Text search
@@ -161,6 +173,7 @@ class ProductService:
                 db_image = ProductImage(
                     product_id=db_product.id,
                     image_url=image_data.image_url,
+                    image_public_id=image_data.image_public_id,
                     alt_text=image_data.alt_text,
                     sort_order=image_data.sort_order if image_data.sort_order else idx,
                     is_primary=image_data.is_primary
@@ -177,24 +190,26 @@ class ProductService:
                     attributes=variant_data.attributes,
                     price=variant_data.price,
                     image_url=variant_data.image_url,
+                    image_public_id=variant_data.image_public_id,
                     sort_order=variant_data.sort_order if variant_data.sort_order else idx
                 )
                 db.add(db_variant)
 
-        # Create inventory if provided
+        # Create inventory entries if provided
         if product_data.inventory:
-            db_inventory = Inventory(
-                product_id=db_product.id,
-                stock_quantity=product_data.inventory.get("stock_quantity", 0),
-                reserved_quantity=product_data.inventory.get("reserved_quantity", 0),
-                low_stock_threshold=product_data.inventory.get("low_stock_threshold", 10),
-                reorder_level=product_data.inventory.get("reorder_level", 5),
-                sku=product_data.inventory.get("sku"),
-                batch_number=product_data.inventory.get("batch_number"),
-                expiry_date=product_data.inventory.get("expiry_date"),
-                location=product_data.inventory.get("location")
-            )
-            db.add(db_inventory)
+            for inventory_data in product_data.inventory:
+                db_inventory = Inventory(
+                    product_id=db_product.id,
+                    stock_quantity=inventory_data.stock_quantity,
+                    reserved_quantity=inventory_data.reserved_quantity,
+                    low_stock_threshold=inventory_data.low_stock_threshold,
+                    reorder_level=inventory_data.reorder_level,
+                    sku=inventory_data.sku,
+                    batch_number=inventory_data.batch_number,
+                    expiry_date=inventory_data.expiry_date,
+                    location=inventory_data.location
+                )
+                db.add(db_inventory)
 
         db.commit()
         db.refresh(db_product)
@@ -312,7 +327,8 @@ class ProductService:
         
         # Delete product images from filesystem before deleting from database
         for image in db_product.images:
-            LogoUpload._delete_logo(image.image_url)
+            if image.image_public_id:
+                LogoUpload._delete_logo(image.image_public_id)
 
         db.delete(db_product)
         db.commit()
@@ -340,6 +356,7 @@ class ProductService:
         db_image = ProductImage(
             product_id=product_id,
             image_url=image_data.image_url,
+            image_public_id=image_data.image_public_id,
             alt_text=image_data.alt_text,
             sort_order=image_data.sort_order,
             is_primary=image_data.is_primary
@@ -363,6 +380,8 @@ class ProductService:
         db_image = db.get(ProductImage, image_id)
         if not db_image:
             return False
+        if db_image.image_public_id:
+            LogoUpload._delete_logo(db_image.image_public_id)
 
         db.delete(db_image)
         db.commit()
@@ -404,6 +423,7 @@ class ProductService:
             price=variant_data.price,
             stock_quantity=variant_data.stock_quantity,
             image_url=variant_data.image_url,
+            image_public_id=variant_data.image_public_id,
             sort_order=variant_data.sort_order
         )
 
@@ -444,7 +464,8 @@ class ProductService:
         db_variant = db.get(ProductVariant, variant_id)
         if not db_variant:
             return False
-
+        if db_variant.image_public_id:
+            LogoUpload._delete_logo(db_variant.image_public_id)
         db.delete(db_variant)
         db.commit()
         return True
@@ -457,7 +478,8 @@ class ProductService:
             .options(
                 selectinload(Product.category),
                 selectinload(Product.images),
-                selectinload(Product.inventory)
+                selectinload(Product.inventory),
+                selectinload(Product.variants)
             )
             .where(Product.featured == True)
             .where(Product.status == ProductStatus.ACTIVE.value)

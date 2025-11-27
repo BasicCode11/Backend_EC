@@ -17,6 +17,7 @@ class Category(Base):
         index=True
     )
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    image_public_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[DateTime] = mapped_column(
