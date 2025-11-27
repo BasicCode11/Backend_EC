@@ -337,7 +337,7 @@ def create_product(
     inventory: Optional[str] = Form(None),
     variants: Optional[str] = Form(None),
     images: List[UploadFile] = File(None),
-    variant_images: Optional[List[UploadFile]] = File(default=[]),
+    variant_images: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:create"]))
 ):
