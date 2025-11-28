@@ -48,8 +48,8 @@ def normalize_images(
 
 
 def transform_variant_with_stock(variant):
-    """Helper function to transform variant with computed stock_quantity"""
-    from app.schemas.product import ProductVariantResponse, ProductImageResponse
+    """Helper function to transform variant with computed stock_quantity and inventory"""
+    from app.schemas.product import ProductVariantResponse, InventoryInVariant
     
     # Get inventory for stock calculation
     variant_inventory = getattr(variant, "inventory", None)
@@ -63,6 +63,11 @@ def transform_variant_with_stock(variant):
         except (TypeError, AttributeError):
             variant_inventory = []
     
+    # Transform inventory list
+    inventory_list = [
+        InventoryInVariant.model_validate(inv) for inv in variant_inventory
+    ]
+    
     return ProductVariantResponse(
         id=variant.id,
         product_id=variant.product_id,
@@ -75,14 +80,14 @@ def transform_variant_with_stock(variant):
         sort_order=variant.sort_order,
         stock_quantity=sum(inv.stock_quantity for inv in variant_inventory),
         available_quantity=sum(inv.available_quantity for inv in variant_inventory),
-        images=[],  # Variants don't have their own images - they use product images
+        inventory=inventory_list,
         created_at=variant.created_at,
         updated_at=variant.updated_at
     )
 
 
 def transform_product_with_primary_image(product):
-    """Helper function to transform product with primary image, category, and inventory"""
+    """Helper function to transform product with primary image, category, and inventory summary"""
     from app.schemas.product import ProductResponse, CategorySimple, InventorySimple
     
     # Get primary image URL
@@ -103,24 +108,35 @@ def transform_product_with_primary_image(product):
             name=product.category.name
         )
     
-    # Create inventory objects
-    inventory_list = []
+    # Calculate inventory summary from all variants
     total_stock = 0
-    if product.inventory:
-        for inv in product.inventory:
-            inventory_list.append(InventorySimple(
-                id=inv.id,
-                stock_quantity=inv.stock_quantity,
-                reserved_quantity=inv.reserved_quantity,
-                available_quantity=inv.available_quantity,
-                low_stock_threshold=inv.low_stock_threshold,
-                reorder_level=inv.reorder_level,
-                is_low_stock=inv.is_low_stock,
-                needs_reorder=inv.needs_reorder,
-                sku=inv.sku,
-                location=inv.location
-            ))
+    total_reserved = 0
+    total_available = 0
+    low_stock_count = 0
+    
+    for variant in product.variants:
+        variant_inventory = getattr(variant, "inventory", [])
+        if variant_inventory and hasattr(variant_inventory, '__iter__') and not isinstance(variant_inventory, str):
+            try:
+                variant_inventory = list(variant_inventory)
+            except (TypeError, AttributeError):
+                variant_inventory = []
+        else:
+            variant_inventory = []
+            
+        for inv in variant_inventory:
             total_stock += inv.stock_quantity
+            total_reserved += inv.reserved_quantity
+            total_available += inv.available_quantity
+            if inv.is_low_stock:
+                low_stock_count += 1
+    
+    inventory_summary = InventorySimple(
+        total_stock=total_stock,
+        total_reserved=total_reserved,
+        total_available=total_available,
+        low_stock_count=low_stock_count
+    )
     
     return ProductResponse(
         id=product.id,
@@ -137,20 +153,18 @@ def transform_product_with_primary_image(product):
         featured=product.featured,
         status=product.status,
         primary_image=primary_img,
-        inventory=inventory_list,
-        total_stock=total_stock,
+        inventory_summary=inventory_summary,
         created_at=product.created_at,
         updated_at=product.updated_at
     )
 
 
 def transform_product_with_details(product):
-    """Transform product with full details including images, variants, and inventory"""
+    """Transform product with full details including images and variants with nested inventory"""
     from app.schemas.product import (
         ProductWithDetails,
         CategorySimple,
         ProductImageResponse,
-        ProductVariantResponse,
         InventorySimple
     )
 
@@ -172,73 +186,38 @@ def transform_product_with_details(product):
             name=product.category.name
         )
 
-    # --- Inventory ---
-    inventory_list = []
+    # --- Calculate inventory summary from all variants ---
     total_stock = 0
+    total_reserved = 0
+    total_available = 0
+    low_stock_count = 0
 
-    # Flatten inventory from all variants
     for variant in product.variants:
-        # Ensure variant.inventory is iterable
-        variant_inventory = getattr(variant, "inventory", None)
-        if variant_inventory is None:
-            variant_inventory = []
-        # Handle case where inventory might be a single object or not iterable
-        elif not hasattr(variant_inventory, '__iter__') or isinstance(variant_inventory, str):
-            variant_inventory = []
-        # Convert to list if it's a SQLAlchemy collection
-        else:
+        variant_inventory = getattr(variant, "inventory", [])
+        if variant_inventory and hasattr(variant_inventory, '__iter__') and not isinstance(variant_inventory, str):
             try:
                 variant_inventory = list(variant_inventory)
             except (TypeError, AttributeError):
                 variant_inventory = []
-
+        else:
+            variant_inventory = []
+            
         for inv in variant_inventory:
-            inventory_list.append(InventorySimple(
-                id=inv.id,
-                stock_quantity=inv.stock_quantity,
-                reserved_quantity=inv.reserved_quantity,
-                available_quantity=inv.available_quantity,
-                low_stock_threshold=inv.low_stock_threshold,
-                reorder_level=inv.reorder_level,
-                is_low_stock=inv.is_low_stock,
-                needs_reorder=inv.needs_reorder,
-                sku=inv.sku,
-                location=inv.location,
-                variant_id=variant.id,
-                variant_name=variant.variant_name
-            ))
             total_stock += inv.stock_quantity
+            total_reserved += inv.reserved_quantity
+            total_available += inv.available_quantity
+            if inv.is_low_stock:
+                low_stock_count += 1
 
-    # --- Transform variants ---
-    def transform_variant_with_stock(variant):
-        variant_inventory = getattr(variant, "inventory", None)
-        if variant_inventory is None:
-            variant_inventory = []
-        # Handle case where inventory might be a single object or not iterable
-        elif not hasattr(variant_inventory, '__iter__') or isinstance(variant_inventory, str):
-            variant_inventory = []
-        # Convert to list if it's a SQLAlchemy collection
-        else:
-            try:
-                variant_inventory = list(variant_inventory)
-            except (TypeError, AttributeError):
-                variant_inventory = []
+    inventory_summary = InventorySimple(
+        total_stock=total_stock,
+        total_reserved=total_reserved,
+        total_available=total_available,
+        low_stock_count=low_stock_count
+    )
 
-        return ProductVariantResponse(
-            id=variant.id,
-            product_id=variant.product_id,
-            sku=variant.sku,
-            variant_name=variant.variant_name,
-            color=variant.color,
-            size=variant.size,
-            weight=variant.weight,
-            additional_price=variant.additional_price,
-            sort_order=variant.sort_order,
-            stock_quantity=sum(inv.stock_quantity for inv in variant_inventory),
-            available_quantity=sum(inv.available_quantity for inv in variant_inventory),
-            created_at=variant.created_at,
-            updated_at=variant.updated_at
-        )
+    # --- Transform variants (use the helper function) ---
+    variant_list = [transform_variant_with_stock(v) for v in product.variants]
 
     # --- Transform product ---
     return ProductWithDetails(
@@ -256,12 +235,11 @@ def transform_product_with_details(product):
         featured=product.featured,
         status=product.status,
         primary_image=primary_img,
-        inventory=inventory_list,
-        total_stock=total_stock,
+        inventory_summary=inventory_summary,
         created_at=product.created_at,
         updated_at=product.updated_at,
         images=[ProductImageResponse.model_validate(img) for img in product.images],
-        variants=[transform_variant_with_stock(v) for v in product.variants]
+        variants=variant_list
     )
 
 
@@ -425,7 +403,7 @@ def create_product(
     product_status: str = Form("active"),
     inventory: Optional[str] = Form(None),
     variants: Optional[str] = Form(None),
-    images: Optional[List[UploadFile]] = Depends(normalize_images),
+    images: List[UploadFile] = Depends(normalize_images),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:create"]))
 ):

@@ -64,15 +64,37 @@ class ProductVariantUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
+class InventoryInVariant(BaseModel):
+    """Inventory information nested within variant response"""
+    id: int
+    stock_quantity: int
+    reserved_quantity: int
+    available_quantity: int
+    low_stock_threshold: int
+    reorder_level: int
+    is_low_stock: bool
+    needs_reorder: bool
+    sku: Optional[str] = None
+    batch_number: Optional[str] = None
+    expiry_date: Optional[datetime] = None
+    location: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class ProductVariantResponse(ProductVariantBase):
     """
     Response schema for product variants.
-    Includes computed stock_quantity from Inventory table.
+    Includes computed stock_quantity from Inventory table and inventory records.
     """
     id: int
     product_id: int
     stock_quantity: int = 0
     available_quantity: int = 0
+    inventory: List[InventoryInVariant] = []
     created_at: datetime
     updated_at: datetime
 
@@ -143,19 +165,11 @@ class CategorySimple(BaseModel):
         from_attributes = True
 
 class InventorySimple(BaseModel):
-    """Simple inventory information for product responses"""
-    id: int
-    variant_id: int
-    variant_name: str
-    stock_quantity: int
-    reserved_quantity: int
-    available_quantity: int
-    low_stock_threshold: int
-    reorder_level: int
-    is_low_stock: bool
-    needs_reorder: bool
-    sku: Optional[str] = None
-    location: Optional[str] = None
+    """Simple inventory summary for product list responses (without variant details)"""
+    total_stock: int = 0
+    total_reserved: int = 0
+    total_available: int = 0
+    low_stock_count: int = 0
 
     class Config:
         from_attributes = True
@@ -176,8 +190,7 @@ class ProductResponse(BaseModel):
     featured: bool
     status: str
     primary_image: Optional[str] = None
-    inventory: Optional[List[InventorySimple]] = []
-    total_stock: int = 0
+    inventory_summary: Optional[InventorySimple] = None
     created_at: datetime
     updated_at: datetime
 
