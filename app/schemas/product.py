@@ -42,26 +42,25 @@ class ProductVariantBase(BaseModel):
     """
     sku: Optional[str] = Field(None, max_length=100)
     variant_name: str = Field(..., max_length=255)
-    attributes: Optional[Dict[str, Any]] = None
-    price: Optional[Decimal] = Field(None, ge=0)
-    image_url: Optional[str] = Field(None, max_length=500)
-    image_public_id: Optional[str] = Field(None, max_length=255)
+    color: str = Field(None, max_length=50)
+    size: str = Field(None, max_length=50)
+    weight: str = Field(None , max_length=20)
+    additional_price: Optional[Decimal] = Field(None, ge=0)
     sort_order: int = 0
 
 
 class ProductVariantCreate(ProductVariantBase):
-    """Schema for creating a new product variant with optional stock"""
-    stock_quantity: int = Field(default=0, ge=0, description="Stock for this variant (must not exceed product inventory)")
+    pass 
 
 
 class ProductVariantUpdate(BaseModel):
     """Schema for updating a product variant (all fields optional)"""
     sku: Optional[str] = Field(None, max_length=100)
     variant_name: Optional[str] = Field(None, max_length=255)
-    attributes: Optional[Dict[str, Any]] = None
-    price: Optional[Decimal] = Field(None, ge=0)
-    stock_quantity: Optional[int] = Field(None, ge=0, description="Stock for this variant (must not exceed product inventory)")
-    image_url: Optional[str] = Field(None, max_length=500)
+    color: str = Field(None, max_length=50)
+    size: str = Field(None, max_length=50)
+    weight: str = Field(None , max_length=20)
+    additional_price: Optional[Decimal] = Field(None, ge=0)
     sort_order: Optional[int] = None
 
 
@@ -72,7 +71,6 @@ class ProductVariantResponse(ProductVariantBase):
     """
     id: int
     product_id: int
-    stock_quantity: int = Field(default=0, description="Computed from Inventory table")
     created_at: datetime
     updated_at: datetime
 

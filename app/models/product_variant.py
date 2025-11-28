@@ -21,12 +21,11 @@ class ProductVariant(Base):
         index=True
     )
     sku: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True, unique=True)
-    variant_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    attributes: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    price: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 2), nullable=True)
-    stock_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # Database column (to be migrated)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    image_public_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    variant_name: Mapped[str] = mapped_column(String(255), nullable=True)
+    color: Mapped[str] = mapped_column(String(50) , nullable=True)
+    size: Mapped[str] = mapped_column(String(50) , nullable=True)
+    weight: Mapped[str] = mapped_column(String(20) , nullable=True)
+    additional_price: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 2), nullable=True) # Database column (to be migrated)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), 
@@ -44,6 +43,11 @@ class ProductVariant(Base):
     product: Mapped["Product"] = relationship(
         "Product",
         back_populates="variants",
+        lazy="select"
+    )
+    inventory: Mapped["Inventory"] = relationship(
+        "Inventory",
+        back_populates="variant",
         lazy="select"
     )
     

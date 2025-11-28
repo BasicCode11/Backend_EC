@@ -114,10 +114,16 @@ def transform_product_with_primary_image(product):
 
 
 def transform_product_with_details(product):
-    """Helper function to transform product with full details including images, variants, and inventory"""
-    from app.schemas.product import ProductWithDetails, CategorySimple, ProductImageResponse, ProductVariantResponse, InventorySimple
-    
-    # Get primary image URL
+    """Transform product with full details including images, variants, and inventory"""
+    from app.schemas.product import (
+        ProductWithDetails,
+        CategorySimple,
+        ProductImageResponse,
+        ProductVariantResponse,
+        InventorySimple
+    )
+
+    # --- Primary Image ---
     primary_img = None
     if product.images:
         for img in product.images:
@@ -126,20 +132,27 @@ def transform_product_with_details(product):
                 break
         if not primary_img and product.images:
             primary_img = product.images[0].image_url
-    
-    # Create category object
+
+    # --- Category ---
     category_obj = None
     if product.category:
         category_obj = CategorySimple(
             id=product.category.id,
             name=product.category.name
         )
-    
-    # Create inventory objects
+
+    # --- Inventory ---
     inventory_list = []
     total_stock = 0
-    if product.inventory:
-        for inv in product.inventory:
+
+    # Flatten inventory from all variants
+    for variant in product.variants:
+        # Ensure variant.inventory is iterable
+        variant_inventory = getattr(variant, "inventory", [])
+        if variant_inventory is None:
+            variant_inventory = []
+
+        for inv in variant_inventory:
             inventory_list.append(InventorySimple(
                 id=inv.id,
                 stock_quantity=inv.stock_quantity,
@@ -150,10 +163,33 @@ def transform_product_with_details(product):
                 is_low_stock=inv.is_low_stock,
                 needs_reorder=inv.needs_reorder,
                 sku=inv.sku,
-                location=inv.location
+                location=inv.location,
+                variant_id=variant.id,
+                variant_name=variant.variant_name
             ))
             total_stock += inv.stock_quantity
-    
+
+    # --- Transform variants ---
+    def transform_variant_with_stock(variant):
+        variant_inventory = getattr(variant, "inventory", [])
+        if variant_inventory is None:
+            variant_inventory = []
+
+        return ProductVariantResponse(
+            id=variant.id,
+            sku=variant.sku,
+            variant_name=variant.variant_name,
+            color=variant.color,
+            size=variant.size,
+            weight=variant.weight,
+            additional_price=variant.additional_price,
+            sort_order=variant.sort_order,
+            stock_quantity=sum(inv.stock_quantity for inv in variant_inventory),
+            available_quantity=sum(inv.available_quantity for inv in variant_inventory),
+            images=[ProductImageResponse.model_validate(img) for img in getattr(variant, 'images', [])]
+        )
+
+    # --- Transform product ---
     return ProductWithDetails(
         id=product.id,
         name=product.name,
@@ -176,6 +212,8 @@ def transform_product_with_details(product):
         images=[ProductImageResponse.model_validate(img) for img in product.images],
         variants=[transform_variant_with_stock(v) for v in product.variants]
     )
+
+
 
 
 @router.get("/products", response_model=ProductListResponse)
@@ -337,7 +375,6 @@ def create_product(
     inventory: Optional[str] = Form(None),
     variants: Optional[str] = Form(None),
     images: List[UploadFile] = File(None),
-    variant_images: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:create"]))
 ):
@@ -357,8 +394,11 @@ def create_product(
       {
         "sku": "PROD-RED-M",
         "variant_name": "Red - Medium",
+        "color": "Red",
+        "size":"M",
+        "weight":"1.2"
         "attributes": {"color": "Red", "size": "M"},
-        "price": 29.99,
+        "additional_price": 29.99,
         "sort_order": 0
       }
     ]
@@ -396,6 +436,7 @@ def create_product(
         if inventory:
             try:
                 parsed_inventory = json.loads(inventory)
+            
             except json.JSONDecodeError as e:
                 raise ValidationError(f"Invalid JSON format for inventory: {str(e)}")
 
@@ -419,23 +460,14 @@ def create_product(
                     raise ValidationError("Variants must be a JSON array")
                 
                 for idx, variant_item in enumerate(variants_list):
-                    # Check if there's a corresponding variant image file
-                    variant_image_url = variant_item.get("image_url")
-                    variant_image_public_id = variant_item.get("image_public_id")
-                    if variant_images and idx < len(variant_images):
-                        variant_image_file = variant_images[idx]
-                        if variant_image_file.filename:
-                            cloud = LogoUpload._save_image(variant_image_file)
-                            variant_image_url = cloud["url"]
-                            variant_image_public_id = cloud["public_id"]
                     variant_data_list.append(
                         ProductVariantCreate(
                             sku=variant_item.get("sku"),
                             variant_name=variant_item.get("variant_name"),
-                            attributes=variant_item.get("attributes"),
-                            price=variant_item.get("price"),
-                            image_url=variant_image_url,
-                            image_public_id=variant_image_public_id,
+                            color=variant_item.get("color"),
+                            size=variant_item.get("size"),
+                            weight=variant_item.get("weight"),
+                            additional_price= variant_item.get("additional_price"),
                             sort_order=variant_item.get("sort_order", 0)
                         )
                     )

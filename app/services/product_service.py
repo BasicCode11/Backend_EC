@@ -36,8 +36,7 @@ class ProductService:
         query = select(Product).options(
             selectinload(Product.category),
             selectinload(Product.images),
-            selectinload(Product.inventory),
-            selectinload(Product.variants)
+            selectinload(Product.variants).selectinload(ProductVariant.inventory)
         )
 
         if status:
@@ -135,8 +134,7 @@ class ProductService:
             .where(Product.id == product_id)
             .options(
                 selectinload(Product.images),
-                selectinload(Product.variants),
-                selectinload(Product.inventory)
+                selectinload(Product.variants).selectinload(ProductVariant.inventory),
             )
         )
         return db.execute(stmt).scalars().first()
@@ -180,36 +178,60 @@ class ProductService:
                 )
                 db.add(db_image)
 
-        # Create variants
+        # 4️⃣ Create variants
+        variant_objects = []
         if product_data.variants:
             for idx, variant_data in enumerate(product_data.variants):
                 db_variant = ProductVariant(
                     product_id=db_product.id,
                     sku=variant_data.sku,
                     variant_name=variant_data.variant_name,
-                    attributes=variant_data.attributes,
-                    price=variant_data.price,
-                    image_url=variant_data.image_url,
-                    image_public_id=variant_data.image_public_id,
+                    color=variant_data.color,
+                    size=variant_data.size,
+                    weight=variant_data.weight,
+                    additional_price=variant_data.additional_price,
                     sort_order=variant_data.sort_order if variant_data.sort_order else idx
                 )
                 db.add(db_variant)
+                db.flush()  # Ensure db_variant.id exists
+                variant_objects.append(db_variant)
 
-        # Create inventory entries if provided
-        if product_data.inventory:
-            for inventory_data in product_data.inventory:
+        # 5️⃣ Create inventory per variant (must follow variant creation)
+        if product_data.inventory and variant_objects:
+            # Build SKU → Variant mapping for validation
+            variant_sku_map = {v.sku: v for v in variant_objects}
+
+            for inv_data in product_data.inventory:
+                sku = inv_data.sku
+                if sku not in variant_sku_map:
+                    raise ValidationError(f"Inventory SKU '{sku}' does not match any variant")
+
+                variant = variant_sku_map[sku]
+
+                # Validate stock quantity
+                variant_stock = getattr(variant, "stock_quantity", 0)
+                if variant_stock > inv_data.stock_quantity:
+                    raise ValidationError(
+                        f"Variant SKU '{sku}' stock ({variant_stock}) cannot exceed inventory stock ({inv_data.stock_quantity})"
+                    )
+
+                # Create inventory
                 db_inventory = Inventory(
-                    product_id=db_product.id,
-                    stock_quantity=inventory_data.stock_quantity,
-                    reserved_quantity=inventory_data.reserved_quantity,
-                    low_stock_threshold=inventory_data.low_stock_threshold,
-                    reorder_level=inventory_data.reorder_level,
-                    sku=inventory_data.sku,
-                    batch_number=inventory_data.batch_number,
-                    expiry_date=inventory_data.expiry_date,
-                    location=inventory_data.location
+                    variant_id=variant.id,
+                    stock_quantity=inv_data.stock_quantity,
+                    reserved_quantity=inv_data.reserved_quantity,
+                    low_stock_threshold=inv_data.low_stock_threshold,
+                    reorder_level=inv_data.reorder_level,
+                    sku=inv_data.sku,
+                    batch_number=inv_data.batch_number,
+                    expiry_date=inv_data.expiry_date,
+                    location=inv_data.location
                 )
                 db.add(db_inventory)
+
+        # 6️⃣ Commit transaction
+        db.commit()
+        db.refresh(db_product)
 
         db.commit()
         db.refresh(db_product)

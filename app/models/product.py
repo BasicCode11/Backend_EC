@@ -62,13 +62,6 @@ class Product(Base):
         cascade="all, delete-orphan"
     )
     
-    inventory: Mapped[List["Inventory"]] = relationship(
-        "Inventory",
-        back_populates="product",
-        lazy="select",
-        cascade="all, delete-orphan"
-    )
-    
     variants: Mapped[List["ProductVariant"]] = relationship(
         "ProductVariant",
         back_populates="product",

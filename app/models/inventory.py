@@ -9,10 +9,10 @@ class Inventory(Base):
     __tablename__ = "inventory"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    product_id: Mapped[int] = mapped_column(
-        ForeignKey("products.id", ondelete="CASCADE"), 
+    variant_id: Mapped[int] = mapped_column(
+        ForeignKey("product_variants.id", ondelete="CASCADE"), 
         nullable=False, 
-        index=True
+        index=False
     )
     stock_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reserved_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -35,14 +35,14 @@ class Inventory(Base):
     )
 
     # Relationships
-    product: Mapped["Product"] = relationship(
-        "Product",
+    variant: Mapped["ProductVariant"] = relationship(
+        "ProductVariant",
         back_populates="inventory",
         lazy="select"
     )
 
     __table_args__ = (
-        Index('idx_inventory_product', 'product_id'),
+        Index('idx_inventory_variant', 'variant_id'),
         Index('idx_inventory_sku', 'sku'),
         Index('idx_inventory_stock', 'stock_quantity'),
     )
@@ -85,4 +85,4 @@ class Inventory(Base):
         return False
 
     def __repr__(self) -> str:
-        return f"<Inventory(id={self.id}, product_id={self.product_id}, stock={self.stock_quantity}, reserved={self.reserved_quantity})>"
+        return f"<Inventory(id={self.id}, variant_id={self.variant_id}, stock={self.stock_quantity}, reserved={self.reserved_quantity})>"

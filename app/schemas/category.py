@@ -29,8 +29,9 @@ class CategoryResponse(BaseModel):
     description: Optional[str] = None
     parent_id: Optional[int] = None
     image_url: Optional[str] = None
+    image_public_id: Optional[str] = None
     is_active: bool
-    sort_order: int
+    sort_order: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
