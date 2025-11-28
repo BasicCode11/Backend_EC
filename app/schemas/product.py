@@ -71,6 +71,8 @@ class ProductVariantResponse(ProductVariantBase):
     """
     id: int
     product_id: int
+    stock_quantity: int = 0
+    available_quantity: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -140,10 +142,11 @@ class CategorySimple(BaseModel):
     class Config:
         from_attributes = True
 
-
 class InventorySimple(BaseModel):
     """Simple inventory information for product responses"""
     id: int
+    variant_id: int
+    variant_name: str
     stock_quantity: int
     reserved_quantity: int
     available_quantity: int

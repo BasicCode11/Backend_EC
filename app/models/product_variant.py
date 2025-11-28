@@ -45,7 +45,7 @@ class ProductVariant(Base):
         back_populates="variants",
         lazy="select"
     )
-    inventory: Mapped["Inventory"] = relationship(
+    inventory: Mapped[List["Inventory"]] = relationship(
         "Inventory",
         back_populates="variant",
         lazy="select"

@@ -410,87 +410,20 @@ class ProductService:
         return True
 
     @staticmethod
-    def add_variant(db: Session, product_id: int, variant_data: ProductVariantCreate) -> ProductVariant:
-        """
-        Add a variant to a product.
+    def delete_all_images(db: Session, product_id: int) -> None:
+        """Delete all images for a product"""
+        # Get all images for the product
+        images = db.query(ProductImage).filter(ProductImage.product_id == product_id).all()
         
-        NOTE: Variant stock_quantity must not exceed product inventory.
-        """
-        product = ProductService.get_by_id(db, product_id)
-        if not product:
-            raise ValidationError("Product not found")
-
-        # Check for duplicate SKU if provided
-        if variant_data.sku:
-            existing_variant = db.query(ProductVariant).filter(
-                ProductVariant.sku == variant_data.sku
-            ).first()
-            if existing_variant:
-                raise ValidationError(f"SKU '{variant_data.sku}' already exists")
-
-        # Validate stock doesn't exceed inventory
-        if variant_data.stock_quantity > 0:
-            StockValidationService.validate_variant_stock_against_inventory(
-                db=db,
-                product_id=product_id,
-                variant_id=None,
-                variant_stock=variant_data.stock_quantity
-            )
-
-        db_variant = ProductVariant(
-            product_id=product_id,
-            sku=variant_data.sku,
-            variant_name=variant_data.variant_name,
-            attributes=variant_data.attributes,
-            price=variant_data.price,
-            stock_quantity=variant_data.stock_quantity,
-            image_url=variant_data.image_url,
-            image_public_id=variant_data.image_public_id,
-            sort_order=variant_data.sort_order
-        )
-
-        db.add(db_variant)
+        # Delete images from filesystem and database
+        for image in images:
+            if image.image_public_id:
+                print(image.image_public_id)
+                LogoUpload._delete_logo(image.image_public_id)
+            db.delete(image)
         db.commit()
-        db.refresh(db_variant)
-        return db_variant
 
-    @staticmethod
-    def update_variant(db: Session, variant_id: int, variant_data: ProductVariantCreate) -> Optional[ProductVariant]:
-        """Update a product variant"""
-        db_variant = db.get(ProductVariant, variant_id)
-        if not db_variant:
-            return None
-
-        # Only update fields that are provided (not None)
-        update_data = variant_data.model_dump(exclude_unset=True, exclude_none=True)
-        
-        # Validate stock if being updated
-        if 'stock_quantity' in update_data and update_data['stock_quantity'] is not None:
-            StockValidationService.validate_variant_stock_against_inventory(
-                db=db,
-                product_id=db_variant.product_id,
-                variant_id=variant_id,
-                variant_stock=update_data['stock_quantity']
-            )
-        
-        for field, value in update_data.items():
-            setattr(db_variant, field, value)
-
-        db.commit()
-        db.refresh(db_variant)
-        return db_variant
-
-    @staticmethod
-    def delete_variant(db: Session, variant_id: int) -> bool:
-        """Delete a product variant"""
-        db_variant = db.get(ProductVariant, variant_id)
-        if not db_variant:
-            return False
-        if db_variant.image_public_id:
-            LogoUpload._delete_logo(db_variant.image_public_id)
-        db.delete(db_variant)
-        db.commit()
-        return True
+    
 
     @staticmethod
     def get_featured_products(db: Session, limit: int = 10) -> List[Product]:
@@ -500,8 +433,7 @@ class ProductService:
             .options(
                 selectinload(Product.category),
                 selectinload(Product.images),
-                selectinload(Product.inventory),
-                selectinload(Product.variants)
+                selectinload(Product.variants).selectinload(ProductVariant.inventory)
             )
             .where(Product.featured == True)
             .where(Product.status == ProductStatus.ACTIVE.value)
@@ -518,7 +450,7 @@ class ProductService:
             .options(
                 selectinload(Product.category),
                 selectinload(Product.images),
-                selectinload(Product.inventory)
+                selectinload(Product.variants).selectinload(ProductVariant.inventory)
             )
             .where(Product.status == ProductStatus.ACTIVE.value)
             .order_by(desc(Product.created_at))

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, UploadFile, File, Form
 from sqlalchemy import null
 from sqlalchemy.orm import Session
@@ -31,20 +31,51 @@ from app.core.exceptions import ValidationError
 router = APIRouter()
 
 
+def normalize_images(
+    images: Any = File(None)
+) -> Optional[List[UploadFile]]:
+    """Normalize images parameter to always be a list - handles both single file and list of files"""
+    if images is None:
+        return None
+    # Handle single file
+    if isinstance(images, UploadFile):
+        return [images]
+    # Handle list of files
+    if isinstance(images, list):
+        return images
+    # Fallback - wrap in list
+    return [images] if images else None
+
+
 def transform_variant_with_stock(variant):
     """Helper function to transform variant with computed stock_quantity"""
-    from app.schemas.product import ProductVariantResponse
+    from app.schemas.product import ProductVariantResponse, ProductImageResponse
+    
+    # Get inventory for stock calculation
+    variant_inventory = getattr(variant, "inventory", None)
+    if variant_inventory is None:
+        variant_inventory = []
+    elif not hasattr(variant_inventory, '__iter__') or isinstance(variant_inventory, str):
+        variant_inventory = []
+    else:
+        try:
+            variant_inventory = list(variant_inventory)
+        except (TypeError, AttributeError):
+            variant_inventory = []
     
     return ProductVariantResponse(
         id=variant.id,
         product_id=variant.product_id,
         sku=variant.sku,
         variant_name=variant.variant_name,
-        attributes=variant.attributes,
-        price=variant.price,
-        image_url=variant.image_url,
+        color=variant.color,
+        size=variant.size,
+        weight=variant.weight,
+        additional_price=variant.additional_price,
         sort_order=variant.sort_order,
-        stock_quantity=variant.stock_quantity,  # Computed property from model
+        stock_quantity=sum(inv.stock_quantity for inv in variant_inventory),
+        available_quantity=sum(inv.available_quantity for inv in variant_inventory),
+        images=[],  # Variants don't have their own images - they use product images
         created_at=variant.created_at,
         updated_at=variant.updated_at
     )
@@ -148,9 +179,18 @@ def transform_product_with_details(product):
     # Flatten inventory from all variants
     for variant in product.variants:
         # Ensure variant.inventory is iterable
-        variant_inventory = getattr(variant, "inventory", [])
+        variant_inventory = getattr(variant, "inventory", None)
         if variant_inventory is None:
             variant_inventory = []
+        # Handle case where inventory might be a single object or not iterable
+        elif not hasattr(variant_inventory, '__iter__') or isinstance(variant_inventory, str):
+            variant_inventory = []
+        # Convert to list if it's a SQLAlchemy collection
+        else:
+            try:
+                variant_inventory = list(variant_inventory)
+            except (TypeError, AttributeError):
+                variant_inventory = []
 
         for inv in variant_inventory:
             inventory_list.append(InventorySimple(
@@ -171,12 +211,22 @@ def transform_product_with_details(product):
 
     # --- Transform variants ---
     def transform_variant_with_stock(variant):
-        variant_inventory = getattr(variant, "inventory", [])
+        variant_inventory = getattr(variant, "inventory", None)
         if variant_inventory is None:
             variant_inventory = []
+        # Handle case where inventory might be a single object or not iterable
+        elif not hasattr(variant_inventory, '__iter__') or isinstance(variant_inventory, str):
+            variant_inventory = []
+        # Convert to list if it's a SQLAlchemy collection
+        else:
+            try:
+                variant_inventory = list(variant_inventory)
+            except (TypeError, AttributeError):
+                variant_inventory = []
 
         return ProductVariantResponse(
             id=variant.id,
+            product_id=variant.product_id,
             sku=variant.sku,
             variant_name=variant.variant_name,
             color=variant.color,
@@ -186,7 +236,8 @@ def transform_product_with_details(product):
             sort_order=variant.sort_order,
             stock_quantity=sum(inv.stock_quantity for inv in variant_inventory),
             available_quantity=sum(inv.available_quantity for inv in variant_inventory),
-            images=[ProductImageResponse.model_validate(img) for img in getattr(variant, 'images', [])]
+            created_at=variant.created_at,
+            updated_at=variant.updated_at
         )
 
     # --- Transform product ---
@@ -326,7 +377,7 @@ def list_products_by_category(
 ):
     """Get products by category with primary image and category"""
     products = ProductService.get_by_category(db, category_id, limit)
-    return [transform_product_with_primary_image(p) for p in products]
+    return [transform_product_with_details(p) for p in products]
 
 
 @router.get("/products/stats/count")
@@ -374,7 +425,7 @@ def create_product(
     product_status: str = Form("active"),
     inventory: Optional[str] = Form(None),
     variants: Optional[str] = Form(None),
-    images: List[UploadFile] = File(None),
+    images: Optional[List[UploadFile]] = Depends(normalize_images),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:create"]))
 ):
@@ -391,28 +442,29 @@ def create_product(
     
     Example variants JSON:
     [
-      {
-        "sku": "PROD-RED-M",
-        "variant_name": "Red - Medium",
-        "color": "Red",
-        "size":"M",
-        "weight":"1.2"
-        "attributes": {"color": "Red", "size": "M"},
-        "additional_price": 29.99,
-        "sort_order": 0
-      }
+        {
+            "sku": "TS-RED-M",
+            "variant_name": "Red - Medium",
+            "color": "Red",
+            "size": "M",
+            "weight": "0.3",
+            "additional_price": 0,
+            "sort_order": 0
+        },
     ]
     
     Example inventory JSON:
-    {
-      "stock_quantity": 100,
-      "reserved_quantity": 0,
-      "low_stock_threshold": 10,
-      "reorder_level": 5,
-      "sku": "PROD-001",
-      "batch_number": "BATCH-2024-001",
-      "location": "Warehouse A"
-    }
+    [
+      {
+        "sku": "TS-RED-M",
+        "stock_quantity": 100,
+        "reserved_quantity": 0,
+        "low_stock_threshold": 10,
+        "reorder_level": 5,
+        "batch_number": "BATCH-2024-001",
+        "location": "Warehouse A"
+        }
+    ]
     
     NOTE: Stock is managed via inventory. You can create inventory during product creation
     or use /api/inventory endpoints to manage stock separately.
@@ -521,7 +573,7 @@ def create_product(
         )
 
 
-@router.put("/products/{product_id}", response_model=ProductResponse)
+@router.put("/products/{product_id}", response_model=ProductWithDetails)
 def update_product(
     request: Request,
     product_id: int,
@@ -534,8 +586,9 @@ def update_product(
     brand: Optional[str] = Form(None),
     weight: Optional[Decimal] = Form(None),
     dimensions: Optional[str] = Form(None),
-    featured: Optional[bool] = Form(None),
-    product_status: Optional[str] = Form(None),
+    featured: bool = Form(True),
+    status: ProductStatus = Form(ProductStatus.ACTIVE),
+    images: Optional[List[UploadFile]] = Depends(normalize_images),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:update"]))
 ):
@@ -544,6 +597,13 @@ def update_product(
     
     All fields are optional. Only provided fields will be updated.
     Accepts multipart/form-data.
+    
+    - **images**: Multiple image files to replace all existing product images. 
+      If provided, all old images will be deleted and replaced with new ones.
+      If not provided, existing images remain unchanged.
+    - **status**: Product status (active, inactive, draft)
+    
+    Note: To delete individual images, use the DELETE /api/products/images/{image_id} endpoint.
     """
     ip_address = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.headers.get("X-Real-IP", "") or (request.client.host if request.client else None)
     user_agent = request.headers.get("User-Agent")
@@ -568,16 +628,39 @@ def update_product(
             weight=weight,
             dimensions=dimensions_dict,
             featured=featured,
-            status=ProductStatus(product_status) if product_status else None
+            status=ProductStatus(status)
         )
         
+        # Update product
         product = ProductService.update(db, product_id, product_data, current_user, ip_address, user_agent)
         if not product:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Product not found"
             )
-        return transform_product_with_primary_image(product)
+        
+        # Handle image uploads if provided
+        # If images are provided, replace all existing images with new ones
+        if images:
+            # Delete all existing images first
+            ProductService.delete_all_images(db, product.id)
+            
+            # Add new images
+            for idx, image_file in enumerate(images):
+                if image_file.filename:  # Check if file is actually uploaded
+                    cloud = LogoUpload._save_image(image_file)
+                    image_data = ProductImageCreate(
+                        image_url=cloud["url"],
+                        image_public_id=cloud["public_id"],
+                        alt_text=f"{product.name} image {idx + 1}",
+                        sort_order=idx,
+                        is_primary=(idx == 0)  # First image is primary
+                    )
+                    ProductService.add_image(db, product.id, image_data)
+        
+        # Reload with details
+        product = ProductService.get_with_details(db, product.id)
+        return transform_product_with_details(product)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -668,171 +751,3 @@ def delete_product_image(
         )
     return {"message": "Image deleted successfully"}
 
-
-# Product Variant Endpoints
-@router.post("/products/{product_id}/variants", response_model=ProductVariantResponse, status_code=status.HTTP_201_CREATED)
-def add_product_variant(
-    product_id: int,
-    variant_name: str = Form(...),
-    sku: Optional[str] = Form(None),
-    attributes: Optional[str] = Form(None),
-    price: Optional[Decimal] = Form(None),
-    stock_quantity: int = Form(0),
-    sort_order: int = Form(0),
-    variant_image: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["products:update"]))
-):
-    """
-    Add a variant to a product - requires products:update permission.
-    
-    Accepts multipart/form-data with:
-    - variant_name (required)
-    - sku, price, stock_quantity, sort_order (optional)
-    - attributes as JSON string (optional)
-    - variant_image file upload (optional)
-    
-    NOTE: Variant stock_quantity must not exceed product inventory.
-    Variants define product options (size, color, etc.), pricing, and allocated stock.
-    """
-    try:
-        # Parse attributes JSON if provided
-        attributes_dict = None
-        if attributes:
-            try:
-                attributes_dict = json.loads(attributes)
-            except json.JSONDecodeError:
-                raise ValidationError("Invalid JSON format for attributes")
-        
-        # Upload variant image if provided
-        image_url_str = None
-        image_public_id = None
-        if variant_image and variant_image.filename:
-            cloud = LogoUpload._save_image(variant_image)
-            image_url_str = cloud["url"]
-            image_public_id = cloud["public_id"]
-        
-        # Create variant data object
-        variant_data = ProductVariantCreate(
-            sku=sku,
-            variant_name=variant_name,
-            attributes=attributes_dict,
-            price=price,
-            stock_quantity=stock_quantity,
-            image_url=image_url_str,
-            image_public_id=image_public_id,
-            sort_order=sort_order
-        )
-        
-        variant = ProductService.add_variant(db, product_id, variant_data)
-        return transform_variant_with_stock(variant)
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-
-
-@router.put("/products/variants/{variant_id}", response_model=ProductVariantResponse)
-def update_product_variant(
-    variant_id: int,
-    variant_name: Optional[str] = Form(None),
-    sku: Optional[str] = Form(None),
-    attributes: Optional[str] = Form(None),
-    price: Optional[Decimal] = Form(None),
-    stock_quantity: Optional[int] = Form(None),
-    sort_order: Optional[int] = Form(None),
-    variant_image: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["products:update"]))
-):
-    """
-    Update a product variant - requires products:update permission.
-    
-    Accepts multipart/form-data with optional fields:
-    - variant_name, sku, price, stock_quantity, sort_order
-    - attributes as JSON string
-    - variant_image file upload (will replace existing image)
-    
-    NOTE: Variant stock_quantity must not exceed product inventory.
-    """
-    try:
-        # Parse attributes JSON if provided
-        attributes_dict = None
-        if attributes:
-            try:
-                attributes_dict = json.loads(attributes)
-            except json.JSONDecodeError:
-                raise ValidationError("Invalid JSON format for attributes")
-        
-        # Upload new variant image if provided
-        image_url_str = None
-        image_public_id = None
-        if variant_image and variant_image.filename:
-            # Get old variant to delete old image
-            old_variant = db.get(ProductVariant, variant_id)
-            if old_variant and old_variant.image_public_id:
-                LogoUpload._delete_logo(old_variant.image_public_id)
-            
-            cloud = LogoUpload._save_image(variant_image)
-            image_url_str = cloud["url"]
-            image_public_id = cloud["public_id"]
-        
-        # Create update data object
-        variant_data = ProductVariantUpdate(
-            sku=sku,
-            variant_name=variant_name,
-            attributes=attributes_dict,
-            price=price,
-            stock_quantity=stock_quantity,
-            image_url=image_url_str,
-            image_public_id=image_public_id,
-            sort_order=sort_order
-        )
-        
-        variant = ProductService.update_variant(db, variant_id, variant_data)
-        if not variant:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Variant not found"
-            )
-        return transform_variant_with_stock(variant)
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-
-
-@router.delete("/products/variants/{variant_id}", status_code=status.HTTP_200_OK)
-def delete_product_variant(
-    variant_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["products:update"]))
-):
-    """
-    Delete a product variant - requires products:update permission.
-    
-    Also deletes the variant image from filesystem if it exists.
-    """
-    # Get variant to delete its image
-    variant = db.get(ProductVariant, variant_id)
-    if not variant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Variant not found"
-        )
-    
-    # Delete variant image from filesystem if exists
-    if variant.image_public_id:
-        LogoUpload._delete_logo(variant.image_public_id)
-    
-    # Delete variant from database
-    success = ProductService.delete_variant(db, variant_id)
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Variant not found"
-        )
-    
-    return {"message": "Variant deleted successfully"}

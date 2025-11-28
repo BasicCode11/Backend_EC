@@ -25,6 +25,7 @@ from .routers.cart_router import router as cart_router
 from .routers.payment_router import router as payment_router
 from .routers.review_router import router as review_router
 from .routers.wishlist_router import router as wishlist_router
+from .routers.variant_router import router as variant_router
 from app.services.inventory_alert_service import InventoryAlertService
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -63,6 +64,7 @@ app.include_router(permission_router, prefix="/api", tags=["Permissions"])
 app.include_router(audit_log_router, prefix="/api", tags=["Audit Logs"])
 app.include_router(category_router, prefix="/api", tags=["Categories"])
 app.include_router(product_router, prefix="/api", tags=["Products"])
+app.include_router(variant_router, prefix="/api", tags=["Product Variants"])
 app.include_router(inventory_router, prefix="/api", tags=["Inventory"])
 app.include_router(telegram_router, prefix="/api/alerts", tags=["Inventory Alerts"])
 app.include_router(order_router, prefix="/api", tags=["Orders"])
