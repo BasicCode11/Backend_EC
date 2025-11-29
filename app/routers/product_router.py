@@ -142,12 +142,14 @@ def transform_product_with_primary_image(product):
         id=product.id,
         name=product.name,
         description=product.description,
+        material=product.material,
+        care_instructions=product.care_instructions,
         price=product.price,
         compare_price=product.compare_price,
         cost_price=product.cost_price,
         category_id=product.category_id,
         category=category_obj,
-        brand=product.brand,
+        brand_id=product.brand_id,
         weight=product.weight,
         dimensions=product.dimensions,
         featured=product.featured,
@@ -224,12 +226,14 @@ def transform_product_with_details(product):
         id=product.id,
         name=product.name,
         description=product.description,
+        material=product.material,
+        care_instructions=product.care_instructions,
         price=product.price,
         compare_price=product.compare_price,
         cost_price=product.cost_price,
         category_id=product.category_id,
         category=category_obj,
-        brand=product.brand,
+        brand_id=product.brand_id,
         weight=product.weight,
         dimensions=product.dimensions,
         featured=product.featured,
@@ -252,6 +256,7 @@ def list_products(
     status: Optional[ProductStatus] = None,
     category_id: Optional[int] = None,
     featured: Optional[bool] = None,
+    brand_id: Optional[int] = None,
     search: Optional[str] = Query(
         None,
         description="Filter by product name/description/brand (case-insensitive substring match)"
@@ -281,6 +286,7 @@ def list_products(
         status=status_value,
         category_id=category_id,
         featured=featured,
+        brand_id=brand_id,
         search=search
     )
     
@@ -394,16 +400,18 @@ def create_product(
     price: Decimal = Form(...),
     category_id: int = Form(...),
     description: Optional[str] = Form(None),
+    material: Optional[str] = Form(None),
+    care_instructions: Optional[str] = Form(None),
     compare_price: Optional[Decimal] = Form(None),
     cost_price: Optional[Decimal] = Form(None),
-    brand: Optional[str] = Form(None),
+    brand_id: Optional[int] = Form(None),
     weight: Optional[Decimal] = Form(None),
     dimensions: Optional[str] = Form(None),
     featured: bool = Form(False),
     product_status: str = Form("active"),
     inventory: Optional[str] = Form(None),
     variants: Optional[str] = Form(None),
-    images: List[UploadFile] = Depends(normalize_images),
+    images: List[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:create"]))
 ):
@@ -421,20 +429,20 @@ def create_product(
     Example variants JSON:
     [
         {
-            "sku": "TS-RED-M",
+            "sku": "DD-RED-M",
             "variant_name": "Red - Medium",
             "color": "Red",
             "size": "M",
             "weight": "0.3",
             "additional_price": 0,
-            "sort_order": 0
+            "sort_order": 1
         },
     ]
     
     Example inventory JSON:
     [
       {
-        "sku": "TS-RED-M",
+        "sku": "DD-RED-M",
         "stock_quantity": 100,
         "reserved_quantity": 0,
         "low_stock_threshold": 10,
@@ -460,7 +468,7 @@ def create_product(
             try:
                 dimensions_dict = json.loads(dimensions)
             except json.JSONDecodeError:
-                raise ValidationError("Invalid JSON format for dimensions")
+                raise HTTPException(status_code=400, detail="Invalid JSON format for dimensions")
         # Parse inventory JSON if provided (supports single object or list)
         inventory_list = []
         if inventory:
@@ -468,15 +476,15 @@ def create_product(
                 parsed_inventory = json.loads(inventory)
             
             except json.JSONDecodeError as e:
-                raise ValidationError(f"Invalid JSON format for inventory: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Invalid JSON format for inventory: {str(e)}")
 
             if isinstance(parsed_inventory, dict):
                 parsed_inventory = [parsed_inventory]
             elif isinstance(parsed_inventory, list):
                 if not all(isinstance(item, dict) for item in parsed_inventory):
-                    raise ValidationError("Each inventory entry must be an object")
+                    raise HTTPException(status_code=400, detail="Each inventory entry must be an object")
             else:
-                raise ValidationError("Inventory must be a JSON object or array of objects")
+                raise HTTPException(status_code=400, detail="Inventory must be a JSON object or array of objects")
 
             for inventory_item in parsed_inventory:
                 inventory_list.append(InventoryCreate(**inventory_item))
@@ -487,7 +495,7 @@ def create_product(
             try:
                 variants_list = json.loads(variants)
                 if not isinstance(variants_list, list):
-                    raise ValidationError("Variants must be a JSON array")
+                    raise HTTPException(status_code=400, detail="Variants must be a JSON array")
                 
                 for idx, variant_item in enumerate(variants_list):
                     variant_data_list.append(
@@ -502,9 +510,9 @@ def create_product(
                         )
                     )
             except json.JSONDecodeError as e:
-                raise ValidationError(f"Invalid JSON format for variants: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Invalid JSON format for variants: {str(e)}")
             except Exception as e:
-                raise ValidationError(f"Error parsing variants: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Error parsing variants: {str(e)}")
         
         # Upload images and create image data
         image_data_list = []
@@ -526,11 +534,13 @@ def create_product(
         product_data = ProductCreate(
             name=name,
             description=description,
+            material=material,
+            care_instructions=care_instructions,
             price=price,
             compare_price=compare_price,
             cost_price=cost_price,
             category_id=category_id,
-            brand=brand,
+            brand_id=brand_id,
             weight=weight,
             dimensions=dimensions_dict,
             featured=featured,
@@ -559,14 +569,15 @@ def update_product(
     price: Optional[Decimal] = Form(None),
     category_id: Optional[int] = Form(None),
     description: Optional[str] = Form(None),
+    material: Optional[str] = Form(None),
+    care_instructions: Optional[str] = Form(None),
     compare_price: Optional[Decimal] = Form(None),
     cost_price: Optional[Decimal] = Form(None),
-    brand: Optional[str] = Form(None),
+    brand_id: Optional[int] = Form(None),
     weight: Optional[Decimal] = Form(None),
     dimensions: Optional[str] = Form(None),
     featured: bool = Form(True),
     status: ProductStatus = Form(ProductStatus.ACTIVE),
-    images: Optional[List[UploadFile]] = Depends(normalize_images),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["products:update"]))
 ):
@@ -593,20 +604,22 @@ def update_product(
                 dimensions_dict = json.loads(dimensions)
             except json.JSONDecodeError:
                 raise ValidationError("Invalid JSON format for dimensions")
-        
+    
         # Create update data object
         product_data = ProductUpdate(
             name=name,
             description=description,
+            material=material,
+            care_instructions=care_instructions,
             price=price,
             compare_price=compare_price,
             cost_price=cost_price,
             category_id=category_id,
-            brand=brand,
+            brand_id=brand_id,
             weight=weight,
             dimensions=dimensions_dict,
             featured=featured,
-            status=ProductStatus(status)
+            status=ProductStatus(status),
         )
         
         # Update product
@@ -616,28 +629,8 @@ def update_product(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Product not found"
             )
-        
-        # Handle image uploads if provided
-        # If images are provided, replace all existing images with new ones
-        if images:
-            # Delete all existing images first
-            ProductService.delete_all_images(db, product.id)
-            
-            # Add new images
-            for idx, image_file in enumerate(images):
-                if image_file.filename:  # Check if file is actually uploaded
-                    cloud = LogoUpload._save_image(image_file)
-                    image_data = ProductImageCreate(
-                        image_url=cloud["url"],
-                        image_public_id=cloud["public_id"],
-                        alt_text=f"{product.name} image {idx + 1}",
-                        sort_order=idx,
-                        is_primary=(idx == 0)  # First image is primary
-                    )
-                    ProductService.add_image(db, product.id, image_data)
-        
-        # Reload with details
         product = ProductService.get_with_details(db, product.id)
+        
         return transform_product_with_details(product)
     except ValidationError as e:
         raise HTTPException(

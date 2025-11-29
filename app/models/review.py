@@ -25,6 +25,7 @@ class Review(Base):
         index=True
     )
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    fit_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True) # 1=Small, 3=True, 5=Large
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -66,6 +67,7 @@ class Review(Base):
         Index('idx_review_approved', 'is_approved'),
         Index('idx_review_rating', 'rating'),
         CheckConstraint('rating >= 1 AND rating <= 5', name='check_rating_range'),
+        CheckConstraint('fit_rating >= 1 AND fit_rating <= 5', name='check_fit_rating_range'),
     )
 
     @property

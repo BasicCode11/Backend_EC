@@ -107,6 +107,7 @@ def create_category(
     description: Optional[str] = Form(None),
     parent_id: Optional[int] = Form(None),
     image_url: Optional[UploadFile] = File(None),
+    size_guide_image: Optional[UploadFile] = File(None),
     is_active: bool = Form(True),
     sort_order: int = Form(0),
     db: Session = Depends(get_db),
@@ -120,7 +121,7 @@ def create_category(
         sort_order=sort_order
     )
     try:
-        category = CategoryService.create(db, current_user ,category_data , image_url)
+        category = CategoryService.create(db, current_user, category_data, image_url, size_guide_image)
         return category
     except ValidationError as e:
         raise HTTPException(
@@ -136,6 +137,7 @@ def update_category(
     description: Optional[str] = Form(None),
     parent_id: Optional[int] = Form(None),
     image_url: Optional[UploadFile] = File(None),
+    size_guide_image: Optional[UploadFile] = File(None),
     is_active: Optional[bool] = Form(None),
     sort_order: Optional[int] = Form(None),
     db: Session = Depends(get_db),
@@ -154,7 +156,7 @@ def update_category(
             is_active=is_active,
             sort_order=sort_order
         )
-        category = CategoryService.update(db, category_id, category_data, current_user, image_url)
+        category = CategoryService.update(db, category_id, category_data, current_user, image_url, size_guide_image)
         if not category:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

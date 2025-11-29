@@ -10,6 +10,7 @@ from app.schemas.variant import (
     VariantUpdateWithInventory,
     VariantSearchParams
 )
+from fastapi import HTTPException , status
 from app.core.exceptions import ValidationError, NotFoundError
 from app.services.audit_log_service import AuditLogService
 
@@ -22,14 +23,7 @@ class VariantService:
         db: Session,
         params: VariantSearchParams
     ) -> Tuple[List[ProductVariant], int]:
-        """
-        Get all variants with optional filters and pagination.
-        
-        Filters:
-        - product_id: Filter by product
-        - search: Search by variant_name
-        - low_stock: Filter variants with low stock
-        """
+
         query = select(ProductVariant).options(
             selectinload(ProductVariant.product),
             selectinload(ProductVariant.inventory)
@@ -104,7 +98,7 @@ class VariantService:
         # 1. Validate product exists
         product = db.get(Product, product_id)
         if not product:
-            raise NotFoundError(f"Product with ID {product.id} not found")
+            raise HTTPException(status_code=404, detail=f"Product with ID {product.id} not found")
 
         # 2. Check SKU uniqueness if provided
         if variant_data.sku:
@@ -112,7 +106,7 @@ class VariantService:
                 ProductVariant.sku == variant_data.sku
             ).first()
             if existing_variant:
-                raise ValidationError(f"SKU '{variant_data.sku}' already exists")
+                raise HTTPException(status_code=400, detail=f"SKU '{variant_data.sku}' already exists")
 
         # 3. Create variant
         db_variant = ProductVariant(
@@ -190,7 +184,7 @@ class VariantService:
         # 1. Get existing variant
         db_variant = VariantService.get_by_id(db, variant_id)
         if not db_variant:
-            return None
+            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
 
         # Store old values for audit log
         old_values = {
@@ -213,7 +207,7 @@ class VariantService:
                 ProductVariant.id != variant_id
             ).first()
             if existing_variant:
-                raise ValidationError(f"SKU '{update_data['sku']}' already exists")
+                return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"SKU '{update_data['sku']}' already exists")
 
         for field, value in update_data.items():
             setattr(db_variant, field, value)
@@ -284,15 +278,15 @@ class VariantService:
         """
         db_variant = VariantService.get_by_id(db, variant_id)
         if not db_variant:
-            return False
+            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
 
         # Check if variant is used in orders
         if len(db_variant.order_items) > 0:
-            raise ValidationError("Cannot delete variant with existing orders")
+            return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete variant with existing orders")
 
         # Check if variant is in carts
         if len(db_variant.cart_items) > 0:
-            raise ValidationError("Cannot delete variant currently in shopping carts")
+            return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete variant currently in shopping carts")
 
         # Store values for audit log
         old_values = {

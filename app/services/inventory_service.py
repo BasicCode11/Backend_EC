@@ -14,7 +14,7 @@ from app.schemas.inventory import (
     InventoryTransfer,
     InventorySearchParams
 )
-from app.core.exceptions import ValidationError, NotFoundError
+from fastapi import HTTPException, status
 from app.services.audit_log_service import AuditLogService
 
 
@@ -26,19 +26,24 @@ class InventoryService:
         db: Session,
         skip: int = 0,
         limit: int = 20,
-        product_id: Optional[int] = None,
-        location: Optional[str] = None
+        variant_id: Optional[int] = None,
+        search: Optional[str] = None,
     ) -> Tuple[List[Inventory], int]:
         """Get all inventory records with optional filters"""
         query = select(Inventory).options(
-            selectinload(Inventory.product)
+            selectinload(Inventory.variant)
         )
 
-        if product_id:
-            query = query.where(Inventory.product_id == product_id)
-        if location:
-            query = query.where(Inventory.location == location)
-
+        if variant_id:
+            query = query.where(Inventory.variant_id == variant_id)
+        if search:
+            query = query.where(
+                or_(
+                    Inventory.sku.ilike(f"%{search}%"),
+                    Inventory.batch_number.ilike(f"%{search}%"),
+                )
+            )
+        
         count_query = select(func.count()).select_from(query.subquery())
         total = db.execute(count_query).scalar()
 
@@ -142,12 +147,12 @@ class InventoryService:
         """Create new inventory record"""
         product = db.query(Product).filter(Product.id == inventory_data.product_id).first()
         if not product:
-            raise NotFoundError(f"Product with id {inventory_data.product_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Product with id {inventory_data.product_id} not found")
 
         if inventory_data.sku:
             existing = InventoryService.get_by_sku(db, inventory_data.sku)
             if existing:
-                raise ValidationError(f"Inventory with SKU {inventory_data.sku} already exists")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Inventory with SKU {inventory_data.sku} already exists")
 
         inventory = Inventory(**inventory_data.model_dump())
         db.add(inventory)
@@ -186,12 +191,12 @@ class InventoryService:
         """Update inventory record"""
         inventory = InventoryService.get_by_id(db, inventory_id)
         if not inventory:
-            raise NotFoundError(f"Inventory with id {inventory_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Inventory with id {inventory_id} not found")
 
         if inventory_data.sku and inventory_data.sku != inventory.sku:
             existing = InventoryService.get_by_sku(db, inventory_data.sku)
             if existing and existing.id != inventory_id:
-                raise ValidationError(f"Inventory with SKU {inventory_data.sku} already exists")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Inventory with SKU {inventory_data.sku} already exists")
 
         old_data = {
             "product_id": float(inventory.product_id) if inventory.product_id else None,
@@ -244,11 +249,12 @@ class InventoryService:
         """Delete inventory record"""
         inventory = InventoryService.get_by_id(db, inventory_id)
         if not inventory:
-            raise NotFoundError(f"Inventory with id {inventory_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Inventory with id {inventory_id} not found")
 
         if inventory.reserved_quantity > 0:
-            raise ValidationError(
-                f"Cannot delete inventory with reserved quantity ({inventory.reserved_quantity} units reserved)"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete inventory with reserved quantity ({inventory.reserved_quantity} units reserved)"
             )
         ldd_data = {
             "product_id": float(inventory.product_id) if inventory.product_id else None,
@@ -288,19 +294,21 @@ class InventoryService:
         """Adjust inventory stock quantity (add or subtract)"""
         inventory = InventoryService.get_by_id(db, inventory_id)
         if not inventory:
-            raise NotFoundError(f"Inventory with id {inventory_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Inventory with id {inventory_id} not found")
 
         old_quantity = inventory.stock_quantity
         new_quantity = old_quantity + adjustment.quantity
 
         if new_quantity < 0:
-            raise ValidationError(
-                f"Insufficient stock. Current: {old_quantity}, Requested adjustment: {adjustment.quantity}"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Insufficient stock. Current: {old_quantity}, Requested adjustment: {adjustment.quantity}"
             )
 
         if new_quantity < inventory.reserved_quantity:
-            raise ValidationError(
-                f"Cannot reduce stock below reserved quantity ({inventory.reserved_quantity} units reserved)"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot reduce stock below reserved quantity ({inventory.reserved_quantity} units reserved)"
             )
 
         inventory.stock_quantity = new_quantity
@@ -331,15 +339,16 @@ class InventoryService:
         """Reserve inventory stock for an order"""
         inventory = InventoryService.get_by_id(db, inventory_id)
         if not inventory:
-            raise NotFoundError(f"Inventory with id {inventory_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Inventory with id {inventory_id} not found")
 
         if inventory.available_quantity < reserve_data.quantity:
-            raise ValidationError(
-                f"Insufficient available stock. Available: {inventory.available_quantity}, Requested: {reserve_data.quantity}"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Insufficient available stock. Available: {inventory.available_quantity}, Requested: {reserve_data.quantity}"
             )
 
         if not inventory.reserve_quantity(reserve_data.quantity):
-            raise ValidationError("Failed to reserve stock")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to reserve stock")
 
         db.flush()
 
@@ -366,15 +375,16 @@ class InventoryService:
         """Release reserved inventory stock"""
         inventory = InventoryService.get_by_id(db, inventory_id)
         if not inventory:
-            raise NotFoundError(f"Inventory with id {inventory_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Inventory with id {inventory_id} not found")
 
         if inventory.reserved_quantity < release_data.quantity:
-            raise ValidationError(
-                f"Cannot release more than reserved. Reserved: {inventory.reserved_quantity}, Requested: {release_data.quantity}"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot release more than reserved. Reserved: {inventory.reserved_quantity}, Requested: {release_data.quantity}"
             )
 
         if not inventory.release_quantity(release_data.quantity):
-            raise ValidationError("Failed to release stock")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to release stock")
 
         db.flush()
 
@@ -402,11 +412,12 @@ class InventoryService:
         """Fulfill order by reducing both reserved and stock quantities"""
         inventory = InventoryService.get_by_id(db, inventory_id)
         if not inventory:
-            raise NotFoundError(f"Inventory with id {inventory_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Inventory with id {inventory_id} not found")
 
         if inventory.reserved_quantity < quantity:
-            raise ValidationError(
-                f"Insufficient reserved stock. Reserved: {inventory.reserved_quantity}, Requested: {quantity}"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Insufficient reserved stock. Reserved: {inventory.reserved_quantity}, Requested: {quantity}"
             )
 
         inventory.reserved_quantity -= quantity
@@ -437,16 +448,17 @@ class InventoryService:
         to_inventory = InventoryService.get_by_id(db, transfer_data.to_inventory_id)
 
         if not from_inventory:
-            raise NotFoundError(f"Source inventory with id {transfer_data.from_inventory_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Source inventory with id {transfer_data.from_inventory_id} not found")
         if not to_inventory:
-            raise NotFoundError(f"Destination inventory with id {transfer_data.to_inventory_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Destination inventory with id {transfer_data.to_inventory_id} not found")
 
         if from_inventory.product_id != to_inventory.product_id:
-            raise ValidationError("Cannot transfer stock between different products")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot transfer stock between different products")
 
         if from_inventory.available_quantity < transfer_data.quantity:
-            raise ValidationError(
-                f"Insufficient available stock in source. Available: {from_inventory.available_quantity}, Requested: {transfer_data.quantity}"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Insufficient available stock in source. Available: {from_inventory.available_quantity}, Requested: {transfer_data.quantity}"
             )
 
         from_inventory.stock_quantity -= transfer_data.quantity

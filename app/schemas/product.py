@@ -106,11 +106,13 @@ class ProductVariantResponse(ProductVariantBase):
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
+    material: Optional[str] = Field(None, max_length=255)
+    care_instructions: Optional[str] = None
     price: Decimal = Field(..., ge=0)
     compare_price: Optional[Decimal] = Field(None, ge=0)
     cost_price: Optional[Decimal] = Field(None, ge=0)
     category_id: int
-    brand: Optional[str] = Field(None, max_length=100)
+    brand_id: Optional[int] = None
     weight: Optional[Decimal] = Field(None, ge=0)
     dimensions: Optional[Dict[str, Any]] = None
     featured: bool = False
@@ -146,11 +148,13 @@ class ProductCreate(ProductBase):
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
+    material: Optional[str] = Field(None, max_length=255)
+    care_instructions: Optional[str] = None
     price: Optional[Decimal] = Field(None, ge=0)
     compare_price: Optional[Decimal] = Field(None, ge=0)
     cost_price: Optional[Decimal] = Field(None, ge=0)
     category_id: Optional[int] = None
-    brand: Optional[str] = Field(None, max_length=100)
+    brand_id: Optional[int] = None
     weight: Optional[Decimal] = Field(None, ge=0)
     dimensions: Optional[Dict[str, Any]] = None
     featured: Optional[bool] = None
@@ -179,12 +183,14 @@ class ProductResponse(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+    material: Optional[str] = None
+    care_instructions: Optional[str] = None
     price: Decimal
     compare_price: Optional[Decimal] = None
     cost_price: Optional[Decimal] = None
     category_id: int
     category: Optional[CategorySimple] = None
-    brand: Optional[str] = None
+    brand_id: Optional[int] = None
     weight: Optional[Decimal] = None
     dimensions: Optional[Dict[str, Any]] = None
     featured: bool
@@ -217,7 +223,7 @@ class ProductListResponse(BaseModel):
 class ProductSearchParams(BaseModel):
     search: Optional[str] = None
     category_id: Optional[int] = None
-    brand: Optional[str] = None
+    brand_id: Optional[int] = None
     status: Optional[ProductStatus] = None
     featured: Optional[bool] = None
     min_price: Optional[Decimal] = Field(None, ge=0)

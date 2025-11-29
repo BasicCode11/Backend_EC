@@ -72,7 +72,7 @@ def list_variants(
     sort_by: str = Query("sort_order", description="Sort by field"),
     sort_order: str = Query("asc", description="Sort order (asc/desc)"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["products:read"]))
+    current_user: User = Depends(require_permission(["variants:read"]))
 ):
     """
     List all product variants with filters and pagination.
@@ -124,16 +124,13 @@ def list_variants(
     )
 
 
-# ============================================================================
-# ENDPOINT 2: POST /variants - Create variant with inventory
-# ============================================================================
-@router.post("/variants/{productid}", response_model=VariantResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/variants", response_model=VariantResponse, status_code=status.HTTP_201_CREATED)
 def create_variant(
     request: Request,
     product_id: int,
     variant_data: VariantCreateWithInventory,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["products:create"]))
+    current_user: User = Depends(require_permission(["variants:create"]))
 ):
     """
     Create a new product variant with inventory.
@@ -208,7 +205,7 @@ def update_variant(
     variant_id: int,
     variant_data: VariantUpdateWithInventory,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["products:update"]))
+    current_user: User = Depends(require_permission(["variants:update"]))
 ):
     """
     Update a product variant and its inventory.
@@ -279,7 +276,7 @@ def delete_variant(
     request: Request,
     variant_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["products:delete"]))
+    current_user: User = Depends(require_permission(["variants:delete"]))
 ):
     """
     Delete a product variant and its inventory (cascade delete).
@@ -350,7 +347,7 @@ def delete_variant(
 def get_variant(
     variant_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["products:read"]))
+    current_user: User = Depends(require_permission(["variants:read"]))
 ):
     """
     Get a single variant by ID with full details including inventory.
@@ -380,7 +377,7 @@ def get_variant(
 def get_variant_count(
     product_id: Optional[int] = Query(None, description="Filter by product ID"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["products:read"]))
+    current_user: User = Depends(require_permission(["variants:read"]))
 ):
     """
     Get total count of variants with optional product filter.

@@ -30,6 +30,7 @@ class CategoryResponse(BaseModel):
     parent_id: Optional[int] = None
     image_url: Optional[str] = None
     image_public_id: Optional[str] = None
+    size_guide_image_url: Optional[str] = None
     is_active: bool
     sort_order: Optional[int] = None
     created_at: datetime

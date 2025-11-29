@@ -65,7 +65,7 @@ class CategoryService:
         return db.execute(stmt).scalars().all()
 
     @staticmethod
-    def create(db: Session, current_user: User ,category_data: CategoryCreate , image_url: Optional[UploadFile] = None) -> Category:
+    def create(db: Session, current_user: User, category_data: CategoryCreate, image_url: Optional[UploadFile] = None, size_guide_image: Optional[UploadFile] = None) -> Category:
         """Create a new category"""
         # Validate parent exists if parent_id is provided
         if category_data.parent_id:
@@ -90,12 +90,19 @@ class CategoryService:
             picture_url = cloud["url"]
             picture_public_id = cloud["public_id"]
 
+        # Upload size guide image if provided
+        size_guide_url = None
+        if size_guide_image:
+            cloud = LogoUpload._save_image(size_guide_image)
+            size_guide_url = cloud["url"]
+
         db_category = Category(
             name=category_data.name,
             description=category_data.description,
             parent_id=category_data.parent_id,
             image_url=picture_url,
             image_public_id=picture_public_id,
+            size_guide_image_url=size_guide_url,
             is_active=category_data.is_active,
             sort_order=category_data.sort_order
         )
@@ -121,7 +128,7 @@ class CategoryService:
         return db_category
 
     @staticmethod
-    def update(db: Session, category_id: int, category_data: CategoryUpdate, current_user: User, image_url: Optional[UploadFile] = None) -> Optional[Category]:
+    def update(db: Session, category_id: int, category_data: CategoryUpdate, current_user: User, image_url: Optional[UploadFile] = None, size_guide_image: Optional[UploadFile] = None) -> Optional[Category]:
         """Update a category"""
         db_category = CategoryService.get_by_id(db, category_id)
         if not db_category:
@@ -147,6 +154,12 @@ class CategoryService:
             cloud = LogoUpload._save_image(image_url)
             db_category.image_url = cloud["url"]
             db_category.image_public_id = cloud["public_id"]
+
+        # Handle size guide image upload
+        if size_guide_image:
+            # Upload new size guide image to Cloudinary
+            cloud = LogoUpload._save_image(size_guide_image)
+            db_category.size_guide_image_url = cloud["url"]
 
         # Handle parent_id: convert 0 to None
         parent_id_to_check = category_data.parent_id

@@ -26,6 +26,13 @@ class User(Base):
     updated_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    
+    brands: Mapped[List["Brand"]] = relationship(
+        "Brand",
+        back_populates="user",
+        lazy="select",
+        cascade="all, delete-orphan"
+    )
 
     # Relationships
     role: Mapped["Role"] = relationship(

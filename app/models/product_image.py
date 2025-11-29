@@ -31,7 +31,7 @@ class ProductImage(Base):
         back_populates="images",
         lazy="select"
     )
-
+    
     __table_args__ = (
         Index('idx_product_image_product', 'product_id'),
         Index('idx_product_image_sort', 'sort_order'),

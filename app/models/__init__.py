@@ -4,6 +4,7 @@ from .role import Role
 from .permission import Permission
 from .role_has_permision import role_has_permission
 from .user_address import UserAddress, AddressType
+from .brand import Brand, BrandStatus
 from .category import Category
 from .product import Product, ProductStatus
 from .product_image import ProductImage
@@ -28,6 +29,8 @@ __all__ = [
     "role_has_permission",
     "UserAddress",
     "AddressType",
+    "Brand",
+    "BrandStatus",
     "Category",
     "Product",
     "ProductStatus",

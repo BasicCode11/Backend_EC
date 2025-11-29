@@ -1,4 +1,7 @@
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
+if TYPE_CHECKING:
+    from .product_image import ProductImage
+
 from sqlalchemy import String, Integer, DateTime, ForeignKey, DECIMAL, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -92,13 +95,6 @@ class ProductVariant(Base):
     def is_in_stock(self) -> bool:
         """Check if variant has available stock"""
         return self.stock_quantity > 0
-
-    @property
-    def attribute_summary(self) -> str:
-        """Get a summary of variant attributes"""
-        if not self.attributes:
-            return ""
-        return ", ".join([f"{k}: {v}" for k, v in self.attributes.items()])
 
     def get_available_stock(self) -> int:
         """

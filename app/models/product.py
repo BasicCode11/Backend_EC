@@ -14,10 +14,12 @@ class ProductStatus(Enum):
 
 class Product(Base):
     __tablename__ = "products"
-
+    
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    material: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    care_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     price: Mapped[float] = mapped_column(DECIMAL(10, 2), nullable=False)
     compare_price: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 2), nullable=True)
     cost_price: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 2), nullable=True)
@@ -26,7 +28,11 @@ class Product(Base):
         nullable=False, 
         index=True
     )
-    brand: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    brand_id : Mapped[int] = mapped_column(
+        ForeignKey("brands.id", ondelete="SET NULL"), 
+        nullable=True, 
+        index=True
+    )
     weight: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 2), nullable=True)
     dimensions: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -47,7 +53,11 @@ class Product(Base):
         onupdate=func.now(), 
         nullable=False
     )
-
+    brand : Mapped["Brand"] = relationship(
+        "Brand",
+        back_populates="products",
+        lazy="select"
+    )
     # Relationships
     category: Mapped["Category"] = relationship(
         "Category",

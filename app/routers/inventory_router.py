@@ -8,7 +8,7 @@ from app.schemas.inventory import (
     InventoryCreate,
     InventoryUpdate,
     InventoryResponse,
-    InventoryWithProduct,
+    InventoryWithVariant,
     InventoryListResponse,
     InventoryAdjustment,
     InventoryReserve,
@@ -21,27 +21,28 @@ from app.services.inventory_service import InventoryService
 from app.services.inventory_alert_service import InventoryAlertService
 from app.services.telegram_service import TelegramService
 from app.deps.auth import get_current_active_user, require_permission
-from app.core.exceptions import ValidationError, NotFoundError
 
 router = APIRouter()
 
 
-def transform_inventory_response(inventory) -> InventoryWithProduct:
+def transform_inventory_response(inventory) -> InventoryWithVariant:
     """Helper function to transform inventory with computed properties"""
-    from app.schemas.inventory import ProductSimple
+    from app.schemas.inventory import VariantSimple
     
-    product_obj = None
-    if inventory.product:
-        product_obj = ProductSimple(
-            id=inventory.product.id,
-            name=inventory.product.name,
-            sku=inventory.sku,
-            price=inventory.product.price
+    variant_obj = None
+    if inventory.variant:
+        variant_obj = VariantSimple(
+            id=inventory.variant.id,
+            variant_name=inventory.variant.variant_name,
+            sku=inventory.variant.sku,
+            additional_price=inventory.variant.additional_price,
+            color=inventory.variant.color,
+            size=inventory.variant.size
         )
     
-    return InventoryWithProduct(
+    return InventoryWithVariant(
         id=inventory.id,
-        product_id=inventory.product_id,
+        variant_id=inventory.variant_id,
         stock_quantity=inventory.stock_quantity,
         reserved_quantity=inventory.reserved_quantity,
         low_stock_threshold=inventory.low_stock_threshold,
@@ -56,18 +57,19 @@ def transform_inventory_response(inventory) -> InventoryWithProduct:
         is_expired=inventory.is_expired,
         created_at=inventory.created_at,
         updated_at=inventory.updated_at,
-        product=product_obj
+        variant=variant_obj,
     )
 
 
 @router.get("/inventory", response_model=InventoryListResponse)
 def get_all_inventory(
-    product_id: Optional[int] = Query(None, description="Filter by product ID"),
-    location: Optional[str] = Query(None, description="Filter by location"),
+    variant_id: Optional[int] = Query(None, description="Filter by variant ID"),
+    search: Optional[str] = Query(None, description="Search by variant name or SKU or batch number"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:read"]))
 ):
     """Get all inventory records with pagination"""
     skip = (page - 1) * limit
@@ -76,8 +78,8 @@ def get_all_inventory(
         db=db,
         skip=skip,
         limit=limit,
-        product_id=product_id,
-        location=location
+        variant_id=variant_id,
+        search=search
     )
     
     items = [transform_inventory_response(inv) for inv in inventories]
@@ -95,7 +97,8 @@ def get_all_inventory(
 def search_inventory(
     params: InventorySearchParams,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:read"]))
 ):
     """Search inventory with advanced filters"""
     inventories, total = InventoryService.search(db=db, params=params)
@@ -114,92 +117,94 @@ def search_inventory(
 @router.get("/inventory/statistics", response_model=InventoryStatsResponse)
 def get_inventory_statistics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:read"]))
 ):
     """Get inventory statistics"""
     stats = InventoryService.get_statistics(db=db)
     return InventoryStatsResponse(**stats)
 
 
-@router.get("/inventory/low-stock", response_model=List[InventoryWithProduct])
+@router.get("/inventory/low-stock", response_model=List[InventoryWithVariant])
 def get_low_stock_items(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:read"]))
 ):
     """Get all inventory items with low stock"""
     inventories = InventoryService.get_low_stock_items(db=db)
     return [transform_inventory_response(inv) for inv in inventories]
 
 
-@router.get("/inventory/reorder", response_model=List[InventoryWithProduct])
+@router.get("/inventory/reorder", response_model=List[InventoryWithVariant])
 def get_reorder_items(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:read"]))
 ):
     """Get all inventory items that need reordering"""
     inventories = InventoryService.get_reorder_items(db=db)
     return [transform_inventory_response(inv) for inv in inventories]
 
 
-@router.get("/inventory/expired", response_model=List[InventoryWithProduct])
+@router.get("/inventory/expired", response_model=List[InventoryWithVariant])
 def get_expired_items(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:read"]))
 ):
     """Get all expired inventory items"""
     inventories = InventoryService.get_expired_items(db=db)
     return [transform_inventory_response(inv) for inv in inventories]
 
 
-@router.get("/inventory/{inventory_id}", response_model=InventoryWithProduct)
+@router.get("/inventory/{inventory_id}", response_model=InventoryWithVariant)
 def get_inventory(
     inventory_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:read"]))
 ):
     """Get inventory by ID"""
     inventory = InventoryService.get_by_id(db=db, inventory_id=inventory_id)
-    if not inventory:
-        raise NotFoundError(f"Inventory with id {inventory_id} not found")
-    
     return transform_inventory_response(inventory)
 
 
-@router.get("/inventory/product/{product_id}", response_model=List[InventoryWithProduct])
+@router.get("/inventory/product/{product_id}", response_model=List[InventoryWithVariant])
 def get_inventory_by_product(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:read"]))
 ):
     """Get all inventory records for a specific product"""
     inventories = InventoryService.get_by_product_id(db=db, product_id=product_id)
     return [transform_inventory_response(inv) for inv in inventories]
 
 
-@router.get("/inventory/sku/{sku}", response_model=InventoryWithProduct)
+@router.get("/inventory/sku/{sku}", response_model=InventoryWithVariant)
 def get_inventory_by_sku(
     sku: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:read"]))
 ):
     """Get inventory by SKU"""
     inventory = InventoryService.get_by_sku(db=db, sku=sku)
-    if not inventory:
-        raise NotFoundError(f"Inventory with SKU {sku} not found")
-    
     return transform_inventory_response(inventory)
 
 
 @router.post(
     "/inventory",
-    response_model=InventoryWithProduct,
+    response_model=InventoryWithVariant,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_permission(["inventory:create"]))]
 )
 def create_inventory(
     inventory: InventoryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission(["inventory:create"])),
 ):
     """Create new inventory record (requires create:inventory permission)"""
     new_inventory = InventoryService.create(
@@ -212,7 +217,7 @@ def create_inventory(
 
 @router.put(
     "/inventory/{inventory_id}",
-    response_model=InventoryWithProduct,
+    response_model=InventoryWithVariant,
     dependencies=[Depends(require_permission(["inventory:update"]))]
 )
 def update_inventory(
@@ -252,7 +257,7 @@ def delete_inventory(
 
 @router.post(
     "/inventory/{inventory_id}/adjust",
-    response_model=InventoryWithProduct,
+    response_model=InventoryWithVariant,
     dependencies=[Depends(require_permission(["inventory:adjust"]))]
 )
 def adjust_inventory_stock(
@@ -279,7 +284,7 @@ def adjust_inventory_stock(
 
 @router.post(
     "/inventory/{inventory_id}/reserve",
-    response_model=InventoryWithProduct,
+    response_model=InventoryWithVariant,
 )
 def reserve_inventory_stock(
     inventory_id: int,
@@ -305,7 +310,7 @@ def reserve_inventory_stock(
 
 @router.post(
     "/inventory/{inventory_id}/release",
-    response_model=InventoryWithProduct
+    response_model=InventoryWithVariant
 )
 def release_inventory_stock(
     inventory_id: int,
@@ -331,7 +336,7 @@ def release_inventory_stock(
 
 @router.post(
     "/inventory/{inventory_id}/fulfill",
-    response_model=InventoryWithProduct
+    response_model=InventoryWithVariant
 )
 def fulfill_order_inventory(
     inventory_id: int,
@@ -359,7 +364,7 @@ def fulfill_order_inventory(
 
 @router.post(
     "/inventory/transfer",
-    response_model=List[InventoryWithProduct]
+    response_model=List[InventoryWithVariant]
 )
 def transfer_inventory_stock(
     transfer_data: InventoryTransfer,

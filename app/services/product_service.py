@@ -5,6 +5,7 @@ from app.models.product import Product, ProductStatus
 from app.models.product_image import ProductImage
 from app.models.product_variant import ProductVariant
 from app.models.user import User
+from app.models.brand import Brand
 from app.models.category import Category
 from app.models.inventory import Inventory
 from app.schemas.product import (
@@ -14,6 +15,7 @@ from app.schemas.product import (
     ProductImageCreate,
     ProductVariantCreate
 )
+from fastapi import HTTPException , status
 from app.core.exceptions import ValidationError
 from app.services.audit_log_service import AuditLogService
 from app.services.file_service import LogoUpload
@@ -29,6 +31,7 @@ class ProductService:
         limit: int = 20,
         status: Optional[str] = None,
         category_id: Optional[int] = None,
+        brand_id: Optional[int] = None,
         featured: Optional[bool] = None,
         search: Optional[str] = None
     ) -> Tuple[List[Product], int]:
@@ -43,6 +46,8 @@ class ProductService:
             query = query.where(Product.status == status)
         if category_id:
             query = query.where(Product.category_id == category_id)
+        if brand_id:
+            query = query.where(Product.brand_id == brand_id)
         if featured is not None:
             query = query.where(Product.featured == featured)
         if search:
@@ -145,17 +150,24 @@ class ProductService:
         # Validate category exists
         category = db.get(Category, product_data.category_id)
         if not category:
-            raise ValidationError("Category not found")
+            raise HTTPException(status_code=404, detail="Category not found")
+
+        # Validate brand exists
+        brand = db.get(Brand, product_data.brand_id)
+        if not brand:
+            raise HTTPException(status_code=404, detail="Brand not found")
 
         # Create product
         db_product = Product(
             name=product_data.name,
             description=product_data.description,
+            material=product_data.material,
+            care_instructions=product_data.care_instructions,
             price=product_data.price,
             compare_price=product_data.compare_price,
             cost_price=product_data.cost_price,
             category_id=product_data.category_id,
-            brand=product_data.brand,
+            brand_id=product_data.brand_id,
             weight=product_data.weight,
             dimensions=product_data.dimensions,
             featured=product_data.featured,
@@ -182,6 +194,17 @@ class ProductService:
         variant_objects = []
         if product_data.variants:
             for idx, variant_data in enumerate(product_data.variants):
+                
+                existing_variant = db.execute(
+                    select(ProductVariant).where(ProductVariant.sku == variant_data.sku)
+                ).scalar_one_or_none()
+    
+                if existing_variant:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"SKU '{variant_data.sku}' already exists"
+                    )
+                
                 db_variant = ProductVariant(
                     product_id=db_product.id,
                     sku=variant_data.sku,
@@ -204,16 +227,14 @@ class ProductService:
             for inv_data in product_data.inventory:
                 sku = inv_data.sku
                 if sku not in variant_sku_map:
-                    raise ValidationError(f"Inventory SKU '{sku}' does not match any variant")
+                    raise HTTPException(status_code=404, detail=f"Inventory SKU '{sku}' does not match any variant")
 
                 variant = variant_sku_map[sku]
 
                 # Validate stock quantity
                 variant_stock = getattr(variant, "stock_quantity", 0)
                 if variant_stock > inv_data.stock_quantity:
-                    raise ValidationError(
-                        f"Variant SKU '{sku}' stock ({variant_stock}) cannot exceed inventory stock ({inv_data.stock_quantity})"
-                    )
+                    raise HTTPException(status_code=404, detail=f"Variant SKU '{sku}' stock ({variant_stock}) cannot exceed inventory stock ({inv_data.stock_quantity})")
 
                 # Create inventory
                 db_inventory = Inventory(
@@ -250,7 +271,7 @@ class ProductService:
                 "compare_price": float(db_product.compare_price) if db_product.compare_price else None,
                 "cost_price": float(db_product.cost_price) if db_product.cost_price else None,
                 "category_id": db_product.category_id,
-                "brand": db_product.brand,
+                "brand_id": brand.name,
                 "weight": float(db_product.weight) if db_product.weight else None,
                 "featured": db_product.featured,
                 "status": db_product.status
@@ -271,7 +292,7 @@ class ProductService:
             "compare_price": float(db_product.compare_price) if db_product.compare_price else None,
             "cost_price": float(db_product.cost_price) if db_product.cost_price else None,
             "category_id": db_product.category_id,
-            "brand": db_product.brand,
+            "brand_id": db_product.brand_id,
             "weight": float(db_product.weight) if db_product.weight else None,
             "featured": db_product.featured,
             "status": db_product.status
@@ -280,8 +301,11 @@ class ProductService:
         if product_data.category_id:
             category = db.get(Category, product_data.category_id)
             if not category:
-                raise ValidationError("Category not found")
-
+                raise HTTPException(status_code=404, detail="Category not found")
+        if product_data.brand_id:
+            brand = db.get(Brand, product_data.brand_id)
+            if not brand:
+                raise HTTPException(status_code=404, detail="Brand not found")
         # Update fields
         update_data = product_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
@@ -300,7 +324,7 @@ class ProductService:
             "compare_price": float(db_product.compare_price) if db_product.compare_price else None,
             "cost_price": float(db_product.cost_price) if db_product.cost_price else None,
             "category_id": db_product.category_id,
-            "brand": db_product.brand,
+            "brand_id": db_product.brand_id,
             "weight": float(db_product.weight) if db_product.weight else None,
             "featured": db_product.featured,
             "status": db_product.status,
@@ -342,10 +366,10 @@ class ProductService:
         }
         # Check if product has orders
         if len(db_product.order_items) > 0:
-            raise ValidationError("Cannot delete product with existing orders")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete product with existing orders")
         
         if len(db_product.variants) > 0:
-            raise ValidationError("Cannot Delete Product whit existing variants")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot Delete Product whit existing variants")
         
         # Delete product images from filesystem before deleting from database
         for image in db_product.images:
@@ -373,7 +397,7 @@ class ProductService:
         """Add an image to a product"""
         product = ProductService.get_by_id(db, product_id)
         if not product:
-            raise ValidationError("Product not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
         db_image = ProductImage(
             product_id=product_id,
@@ -410,19 +434,17 @@ class ProductService:
         return True
 
     @staticmethod
-    def delete_all_images(db: Session, product_id: int) -> None:
+    def delete_all_images(db: Session, product_id: int) -> bool:
         """Delete all images for a product"""
         # Get all images for the product
         images = db.query(ProductImage).filter(ProductImage.product_id == product_id).all()
-        
         # Delete images from filesystem and database
         for image in images:
             if image.image_public_id:
-                print(image.image_public_id)
                 LogoUpload._delete_logo(image.image_public_id)
             db.delete(image)
         db.commit()
-
+        return True
     
 
     @staticmethod

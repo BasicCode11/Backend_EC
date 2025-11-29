@@ -119,6 +119,19 @@ class DataFactory:
             {"name": "audit_logs:read"},
             {"name": "audit_logs:update"},
             {"name": "audit_logs:delete"},
+
+            {"name": "brands:create"},
+            {"name": "brands:read"},
+            {"name": "brands:update"},
+            {"name": "brands:delete"},
+            {"name": "brands:list"},
+            {"name": "brands:search"},
+
+            {"name": "variants:create"},
+            {"name": "variants:read"},
+            {"name": "variants:update"},
+            {"name": "variants:delete"},
+
         ]
 
     @staticmethod
@@ -219,6 +232,18 @@ class DataFactory:
                     {"name": "audit_logs:read"},
                     {"name": "audit_logs:update"},
                     {"name": "audit_logs:delete"},
+                    #brand
+                    {"name": "brands:create"},
+                    {"name": "brands:read"},
+                    {"name": "brands:update"},
+                    {"name": "brands:delete"},
+                    {"name": "brands:list"},
+                    {"name": "brands:search"},
+                    #variant
+                    {"name": "variants:create"},
+                    {"name": "variants:read"},
+                    {"name": "variants:update"},
+                    {"name": "variants:delete"},
                 ],
             },
             {

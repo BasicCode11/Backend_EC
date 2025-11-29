@@ -5,7 +5,7 @@ from decimal import Decimal
 
 
 class InventoryBase(BaseModel):
-    product_id: int
+    variant_id: int
     stock_quantity: int = Field(0, ge=0)
     reserved_quantity: int = Field(0, ge=0)
     low_stock_threshold: int = Field(10, ge=0)
@@ -53,12 +53,13 @@ class InventoryTransfer(BaseModel):
     reason: Optional[str] = Field(None, max_length=500)
 
 
-class ProductSimple(BaseModel):
+class VariantSimple(BaseModel):
     id: int
-    name: str
+    variant_name: str
     sku: Optional[str] = None
-    price: Decimal
-
+    additional_price: Decimal
+    color: Optional[str] = None
+    size: Optional[str] = None
     class Config:
         from_attributes = True
 
@@ -76,15 +77,15 @@ class InventoryResponse(InventoryBase):
         from_attributes = True
 
 
-class InventoryWithProduct(InventoryResponse):
-    product: Optional[ProductSimple] = None
+class InventoryWithVariant(InventoryResponse):
+    variant: Optional[VariantSimple] = None
 
     class Config:
         from_attributes = True
 
 
 class InventoryListResponse(BaseModel):
-    items: list[InventoryWithProduct]
+    items: list[InventoryWithVariant]
     total: int
     page: int
     limit: int
@@ -104,7 +105,7 @@ class InventoryStatsResponse(BaseModel):
 
 class InventorySearchParams(BaseModel):
     search: Optional[str] = None
-    product_id: Optional[int] = None
+    variant_id: Optional[int] = None
     location: Optional[str] = None
     low_stock: Optional[bool] = None
     needs_reorder: Optional[bool] = None
