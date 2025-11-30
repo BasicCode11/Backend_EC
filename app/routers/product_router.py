@@ -22,6 +22,7 @@ from app.schemas.product import (
     ProductVariantResponse,
     ProductStatus,
     InventoryCreate,
+    BrandSimple,
 )
 from app.services.product_service import ProductService
 from app.services.file_service import LogoUpload
@@ -188,6 +189,13 @@ def transform_product_with_details(product):
             name=product.category.name
         )
 
+    # --- Brand ---
+    brand_obj = None
+    if product.brand:
+        brand_obj = BrandSimple(
+            id=product.brand.id,
+            name=product.brand.name
+        )
     # --- Calculate inventory summary from all variants ---
     total_stock = 0
     total_reserved = 0
@@ -234,6 +242,7 @@ def transform_product_with_details(product):
         category_id=product.category_id,
         category=category_obj,
         brand_id=product.brand_id,
+        brand=brand_obj,
         weight=product.weight,
         dimensions=product.dimensions,
         featured=product.featured,

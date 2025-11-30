@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -18,6 +18,14 @@ class BrandUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=255)
     status: Optional[str] = Field(None, pattern="^(active|inactive)$")
 
+class UserSimple(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+
+    class Config:
+        from_attributes = True
+
 
 class BrandResponse(BaseModel):
     id: int
@@ -26,12 +34,21 @@ class BrandResponse(BaseModel):
     logo: str
     logo_public_id: str
     status: str
-    created_by: int
+    user: UserSimple = Field(..., serialization_alias="created_by")
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class BrandListResponse(BaseModel):
+    """Response schema for paginated brand list"""
+    brands: List[BrandResponse]
+    total: int
+    page: int
+    limit: int
+    pages: int
 
 
 class BrandWithProducts(BrandResponse):

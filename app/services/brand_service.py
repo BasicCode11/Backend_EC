@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import UploadFile , HTTPException , status
 from sqlalchemy import select, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from app.models.brand import Brand, BrandStatus
 from app.models.user import User
 from app.schemas.brand import BrandCreate, BrandUpdate
@@ -20,9 +20,11 @@ class BrandService:
         limit: int = 20,
         status: Optional[str] = None,
         search: Optional[str] = None
-    ) -> List[Brand]:
+    ) -> tuple[List[Brand], int]:
         """Get all brands with optional filters"""
-        query = select(Brand).order_by(Brand.name)
+        query = select(Brand).options(
+            selectinload(Brand.user)
+        ).order_by(Brand.name)
 
         if status:
             query = query.where(Brand.status == status)
@@ -30,13 +32,23 @@ class BrandService:
         if search:
             query = query.where(Brand.name.ilike(f"%{search}%"))
 
+        # Get total count before pagination
+        count_query = select(func.count()).select_from(query.subquery())
+        total = db.execute(count_query).scalar()
+
+        # Apply pagination
         query = query.offset((page - 1) * limit).limit(limit)
-        return db.execute(query).scalars().all()
+        brands = db.execute(query).scalars().all()
+        
+        return brands, total
 
     @staticmethod
     def get_by_id(db: Session, brand_id: int) -> Optional[Brand]:
         """Get brand by ID"""
-        return db.get(Brand, brand_id)
+        stmt = select(Brand).options(
+            selectinload(Brand.user)
+        ).where(Brand.id == brand_id)
+        return db.execute(stmt).scalar_one_or_none()
 
     @staticmethod
     def get_by_name(db: Session, name: str) -> Optional[Brand]:

@@ -1,13 +1,15 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
+from math import ceil
 from app.database import get_db
 from app.models.user import User
 from app.schemas.brand import (
     BrandCreate,
     BrandUpdate,
     BrandResponse,
-    BrandWithProducts
+    BrandWithProducts,
+    BrandListResponse
 )
 from app.services.brand_service import BrandService
 from app.deps.auth import get_current_active_user, require_permission
@@ -16,7 +18,7 @@ from app.core.exceptions import ValidationError
 router = APIRouter()
 
 
-@router.get("/brands", response_model=List[BrandResponse])
+@router.get("/brands", response_model=BrandListResponse)
 def list_brands(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=500, description="Items per page"),
@@ -33,14 +35,24 @@ def list_brands(
     - **status**: Filter by brand status (active/inactive)
     - **search**: Search brands by name
     """
-    brands = BrandService.get_all(
+    brands, total = BrandService.get_all(
         db=db,
         page=page,
         limit=limit,
         status=status,
         search=search
     )
-    return brands
+    
+    pages = ceil(total / limit) if total > 0 else 0
+    
+    return {
+        "brands": brands,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages
+    }
+
 
 
 @router.get("/brands/{brand_id}", response_model=BrandResponse)

@@ -56,7 +56,6 @@ class ProductService:
                 or_(
                     Product.name.ilike(like_pattern),
                     Product.description.ilike(like_pattern),
-                    Product.brand.ilike(like_pattern)
                 )
             )
 

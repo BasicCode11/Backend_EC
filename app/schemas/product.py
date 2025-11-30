@@ -42,9 +42,9 @@ class ProductVariantBase(BaseModel):
     """
     sku: Optional[str] = Field(None, max_length=100)
     variant_name: str = Field(..., max_length=255)
-    color: str = Field(None, max_length=50)
-    size: str = Field(None, max_length=50)
-    weight: str = Field(None , max_length=20)
+    color: Optional[str] = Field(None, max_length=50)
+    size: Optional[str] = Field(None, max_length=50)
+    weight: Optional[str] = Field(None, max_length=20)
     additional_price: Optional[Decimal] = Field(None, ge=0)
     sort_order: int = 0
 
@@ -57,9 +57,9 @@ class ProductVariantUpdate(BaseModel):
     """Schema for updating a product variant (all fields optional)"""
     sku: Optional[str] = Field(None, max_length=100)
     variant_name: Optional[str] = Field(None, max_length=255)
-    color: str = Field(None, max_length=50)
-    size: str = Field(None, max_length=50)
-    weight: str = Field(None , max_length=20)
+    color: Optional[str] = Field(None, max_length=50)
+    size: Optional[str] = Field(None, max_length=50)
+    weight: Optional[str] = Field(None, max_length=20)
     additional_price: Optional[Decimal] = Field(None, ge=0)
     sort_order: Optional[int] = None
 
@@ -178,6 +178,9 @@ class InventorySimple(BaseModel):
     class Config:
         from_attributes = True
 
+class BrandSimple(BaseModel):
+    id: int
+    name: str
 
 class ProductResponse(BaseModel):
     id: int
@@ -191,6 +194,7 @@ class ProductResponse(BaseModel):
     category_id: int
     category: Optional[CategorySimple] = None
     brand_id: Optional[int] = None
+    brand: Optional[BrandSimple] = None
     weight: Optional[Decimal] = None
     dimensions: Optional[Dict[str, Any]] = None
     featured: bool
