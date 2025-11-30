@@ -216,42 +216,21 @@ class ProductService:
                 )
                 db.add(db_variant)
                 db.flush()  # Ensure db_variant.id exists
-                variant_objects.append(db_variant)
+                variant_objects.append((db_variant, variant_data.inventory))
 
-        # 5️⃣ Create inventory per variant (must follow variant creation)
-        if product_data.inventory and variant_objects:
-            # Build SKU → Variant mapping for validation
-            variant_sku_map = {v.sku: v for v in variant_objects}
-
-            for inv_data in product_data.inventory:
-                sku = inv_data.sku
-                if sku not in variant_sku_map:
-                    raise HTTPException(status_code=404, detail=f"Inventory SKU '{sku}' does not match any variant")
-
-                variant = variant_sku_map[sku]
-
-                # Validate stock quantity
-                variant_stock = getattr(variant, "stock_quantity", 0)
-                if variant_stock > inv_data.stock_quantity:
-                    raise HTTPException(status_code=404, detail=f"Variant SKU '{sku}' stock ({variant_stock}) cannot exceed inventory stock ({inv_data.stock_quantity})")
-
-                # Create inventory
-                db_inventory = Inventory(
-                    variant_id=variant.id,
-                    stock_quantity=inv_data.stock_quantity,
-                    reserved_quantity=inv_data.reserved_quantity,
-                    low_stock_threshold=inv_data.low_stock_threshold,
-                    reorder_level=inv_data.reorder_level,
-                    sku=inv_data.sku,
-                    batch_number=inv_data.batch_number,
-                    expiry_date=inv_data.expiry_date,
-                    location=inv_data.location
-                )
-                db.add(db_inventory)
-
-        # 6️⃣ Commit transaction
-        db.commit()
-        db.refresh(db_product)
+            for db_variant, inventory_list in variant_objects:
+                for inv_item in inventory_list:
+                    new_inv = Inventory(
+                        variant_id=db_variant.id,
+                        sku=inv_item.sku or db_variant.sku,  # auto inherit SKU
+                        stock_quantity=inv_item.stock_quantity,
+                        reserved_quantity=inv_item.reserved_quantity,
+                        low_stock_threshold=inv_item.low_stock_threshold,
+                        reorder_level=inv_item.reorder_level,
+                        batch_number=inv_item.batch_number,
+                        location=inv_item.location
+                    )
+                    db.add(new_inv)
 
         db.commit()
         db.refresh(db_product)

@@ -31,6 +31,16 @@ class ProductImageResponse(ProductImageBase):
     class Config:
         from_attributes = True
 
+class InventoryCreate(BaseModel):
+    stock_quantity: int = Field(0, ge=0)
+    reserved_quantity: int = Field(0, ge=0)
+    low_stock_threshold: int = Field(10, ge=0)
+    reorder_level: int = Field(5, ge=0)
+    sku: Optional[str] = Field(None, max_length=100)
+    batch_number: Optional[str] = Field(None, max_length=100)
+    expiry_date: Optional[datetime] = None
+    location: Optional[str] = Field(None, max_length=100)
+
 
 # Product Variant Schemas
 class ProductVariantBase(BaseModel):
@@ -47,6 +57,15 @@ class ProductVariantBase(BaseModel):
     weight: Optional[str] = Field(None, max_length=20)
     additional_price: Optional[Decimal] = Field(None, ge=0)
     sort_order: int = 0
+    inventory: List[InventoryCreate] = []
+    @field_validator("inventory", mode="before")
+    @classmethod
+    def ensure_inventory_list(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, dict):
+            return [v]
+        return v
 
 
 class ProductVariantCreate(ProductVariantBase):
@@ -119,23 +138,13 @@ class ProductBase(BaseModel):
     status: ProductStatus = ProductStatus.ACTIVE
 
 
-class InventoryCreate(BaseModel):
-    stock_quantity: int = Field(0, ge=0)
-    reserved_quantity: int = Field(0, ge=0)
-    low_stock_threshold: int = Field(10, ge=0)
-    reorder_level: int = Field(5, ge=0)
-    sku: Optional[str] = Field(None, max_length=100)
-    batch_number: Optional[str] = Field(None, max_length=100)
-    expiry_date: Optional[datetime] = None
-    location: Optional[str] = Field(None, max_length=100)
 
 
 class ProductCreate(ProductBase):
     images: List[ProductImageCreate] = Field(default_factory=list)
     variants: List[ProductVariantCreate] = Field(default_factory=list)
-    inventory: List[InventoryCreate] = Field(default_factory=list)
-
-    @field_validator("inventory", mode="before")
+    
+    @field_validator("variants", mode="before")
     @classmethod
     def ensure_inventory_list(cls, v):
         if v is None:

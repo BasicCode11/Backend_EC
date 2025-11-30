@@ -418,7 +418,6 @@ def create_product(
     dimensions: Optional[str] = Form(None),
     featured: bool = Form(False),
     product_status: str = Form("active"),
-    inventory: Optional[str] = Form(None),
     variants: Optional[str] = Form(None),
     images: List[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -445,21 +444,29 @@ def create_product(
             "weight": "0.3",
             "additional_price": 0,
             "sort_order": 1
+            "inventory": [
+                    {
+                        "sku": "DD-RED-M",
+                        "stock_quantity": 100,
+                        "reserved_quantity": 0,
+                        "low_stock_threshold": 10,
+                        "reorder_level": 5,
+                        "batch_number": "BATCH-2024-001",
+                        "location": "Warehouse A"
+                    },
+                    {
+                        "sku": "DD-RED-M",
+                        "stock_quantity": 200,
+                        "reserved_quantity": 2,
+                        "low_stock_threshold": 10,
+                        "reorder_level": 5,
+                        "batch_number": "BATCH-2024-001",
+                        "location": "Warehouse A"
+                    }
+                ]
         },
     ]
     
-    Example inventory JSON:
-    [
-      {
-        "sku": "DD-RED-M",
-        "stock_quantity": 100,
-        "reserved_quantity": 0,
-        "low_stock_threshold": 10,
-        "reorder_level": 5,
-        "batch_number": "BATCH-2024-001",
-        "location": "Warehouse A"
-        }
-    ]
     
     NOTE: Stock is managed via inventory. You can create inventory during product creation
     or use /api/inventory endpoints to manage stock separately.
@@ -478,26 +485,7 @@ def create_product(
                 dimensions_dict = json.loads(dimensions)
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid JSON format for dimensions")
-        # Parse inventory JSON if provided (supports single object or list)
-        inventory_list = []
-        if inventory:
-            try:
-                parsed_inventory = json.loads(inventory)
-            
-            except json.JSONDecodeError as e:
-                raise HTTPException(status_code=400, detail=f"Invalid JSON format for inventory: {str(e)}")
-
-            if isinstance(parsed_inventory, dict):
-                parsed_inventory = [parsed_inventory]
-            elif isinstance(parsed_inventory, list):
-                if not all(isinstance(item, dict) for item in parsed_inventory):
-                    raise HTTPException(status_code=400, detail="Each inventory entry must be an object")
-            else:
-                raise HTTPException(status_code=400, detail="Inventory must be a JSON object or array of objects")
-
-            for inventory_item in parsed_inventory:
-                inventory_list.append(InventoryCreate(**inventory_item))
-            
+    
         # Parse variants JSON if provided
         variant_data_list = []
         if variants:
@@ -505,8 +493,26 @@ def create_product(
                 variants_list = json.loads(variants)
                 if not isinstance(variants_list, list):
                     raise HTTPException(status_code=400, detail="Variants must be a JSON array")
-                
+
                 for idx, variant_item in enumerate(variants_list):
+
+                    # --- Parse Inventory inside Variant ---
+                    inventory_items = []
+                    if "inventory" in variant_item and isinstance(variant_item["inventory"], list):
+                        for inv in variant_item["inventory"]:
+                            inventory_items.append(
+                                InventoryCreate(
+                                    sku=inv.get("sku"),
+                                    stock_quantity=inv.get("stock_quantity", 0),
+                                    reserved_quantity=inv.get("reserved_quantity", 0),
+                                    low_stock_threshold=inv.get("low_stock_threshold", 0),
+                                    reorder_level=inv.get("reorder_level", 0),
+                                    batch_number=inv.get("batch_number"),
+                                    location=inv.get("location")
+                                )
+                            )
+
+                    # --- Create Variant Object ---
                     variant_data_list.append(
                         ProductVariantCreate(
                             sku=variant_item.get("sku"),
@@ -514,12 +520,15 @@ def create_product(
                             color=variant_item.get("color"),
                             size=variant_item.get("size"),
                             weight=variant_item.get("weight"),
-                            additional_price= variant_item.get("additional_price"),
-                            sort_order=variant_item.get("sort_order", 0)
+                            additional_price=variant_item.get("additional_price"),
+                            sort_order=variant_item.get("sort_order", 0),
+                            inventory=inventory_items
                         )
                     )
+
             except json.JSONDecodeError as e:
-                raise HTTPException(status_code=400, detail=f"Invalid JSON format for variants: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Invalid JSON for variants: {str(e)}")
+
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Error parsing variants: {str(e)}")
         
@@ -556,7 +565,6 @@ def create_product(
             status=ProductStatus(product_status),
             images=image_data_list,
             variants=variant_data_list,
-            inventory=inventory_list
         )
         
         product = ProductService.create(db, product_data, current_user, ip_address, user_agent)
