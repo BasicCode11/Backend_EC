@@ -15,7 +15,7 @@ class Inventory(Base):
         index=False
     )
     stock_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    reserved_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reserved_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=True)
     low_stock_threshold: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     reorder_level: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     sku: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
