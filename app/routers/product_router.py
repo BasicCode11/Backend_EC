@@ -261,7 +261,7 @@ def transform_product_with_details(product):
 @router.get("/products", response_model=ProductListResponse)
 def list_products(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=1000),
     status: Optional[ProductStatus] = None,
     category_id: Optional[int] = None,
     featured: Optional[bool] = None,
