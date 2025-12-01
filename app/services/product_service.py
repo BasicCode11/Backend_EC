@@ -337,7 +337,7 @@ class ProductService:
             "compare_price": float(db_product.compare_price) if db_product.compare_price else None,
             "cost_price": float(db_product.cost_price) if db_product.cost_price else None,
             "category_id": db_product.category_id,
-            "brand": db_product.brand,
+            "brand": db_product.brand_id,
             "weight": float(db_product.weight) if db_product.weight else None,
             "featured": db_product.featured,
             "status": db_product.status
@@ -354,10 +354,6 @@ class ProductService:
             if image.image_public_id:
                 LogoUpload._delete_logo(image.image_public_id)
 
-        db.delete(db_product)
-        db.commit()
-
-        
         AuditLogService.log_delete(
             db=db,
             user_id=current_user.id,
@@ -365,9 +361,12 @@ class ProductService:
             entity_uuid=current_user.uuid,
             user_agent=user_agent,
             old_values=old_values,
-            entity_id=db_product.id,
+            entity_id=product_id,
             entity_type="Product"
         )
+
+        db.delete(db_product)
+        db.commit()
         return True
 
     @staticmethod
