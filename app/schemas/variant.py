@@ -53,6 +53,7 @@ class VariantInventoryResponse(BaseModel):
 # Variant schemas
 class VariantBase(BaseModel):
     """Base schema for product variants"""
+    product_id: int
     sku: Optional[str] = Field(None, max_length=100)
     variant_name: str = Field(..., max_length=255)
     color: Optional[str] = Field(None, max_length=50)

@@ -80,7 +80,6 @@ class VariantService:
     @staticmethod
     def create(
         db: Session,
-        product_id: int,
         variant_data: VariantCreateWithInventory,
         current_user: User,
         ip_address: Optional[str] = None,
@@ -96,10 +95,10 @@ class VariantService:
         4. Create inventory records
         """
         # 1. Validate product exists
-        product = db.get(Product, product_id)
+        product = db.get(Product, variant_data.product_id)
         if not product:
             raise HTTPException(status_code=404, detail=f"Product with ID {product.id} not found")
-
+        
         # 2. Check SKU uniqueness if provided
         if variant_data.sku:
             existing_variant = db.query(ProductVariant).filter(
@@ -110,7 +109,7 @@ class VariantService:
 
         # 3. Create variant
         db_variant = ProductVariant(
-            product_id=product.id,
+            product_id=variant_data.product_id,
             sku=variant_data.sku,
             variant_name=variant_data.variant_name,
             color=variant_data.color,

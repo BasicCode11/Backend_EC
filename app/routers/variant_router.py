@@ -127,7 +127,6 @@ def list_variants(
 @router.post("/variants", response_model=VariantResponse, status_code=status.HTTP_201_CREATED)
 def create_variant(
     request: Request,
-    product_id: int,
     variant_data: VariantCreateWithInventory,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["variants:create"]))
@@ -177,7 +176,6 @@ def create_variant(
     try:
         variant = VariantService.create(
             db=db,
-            product_id= product_id,
             variant_data=variant_data,
             current_user=current_user,
             ip_address=ip_address,
