@@ -30,11 +30,11 @@ def upgrade() -> None:
     # op.drop_index('ix_password_reset_tokens_verification_code', table_name='password_reset_tokens')
     # op.drop_table('password_reset_tokens')
     
-    # Drop foreign key FIRST (before indexes)
-    try:
-        op.drop_constraint('product_images_ibfk_2', 'product_images', type_='foreignkey')
-    except:
-        pass  # Constraint might not exist
+    # # Drop foreign key FIRST (before indexes)
+    # try:
+    #     op.drop_constraint('product_images_ibfk_2', 'product_images', type_='foreignkey')
+    # except:
+    #     pass  # Constraint might not exist
     
     # These indexes don't exist in the database, commenting out
     # op.drop_index('idx_product_image_variant', table_name='product_images')

@@ -105,38 +105,7 @@ class ProductValidation:
             raise ValidationError("Team ID must be a positive integer")
         return team_id
     
-class AgentValidation:
-    """Agent-related validation utilities."""
 
-    @staticmethod
-    def validate_agent_name(name: str) -> str:
-        if not name:
-            raise ValidationError("Agent name is required")
-        if len(name) < 2:
-            raise ValidationError("Agent name must be at least 2 characters long")
-        if len(name) > 100:
-            raise ValidationError("Agent name must be less than 100 characters long")
-        return name.strip()
-
-    @staticmethod
-    def validate_agent_description(description: Optional[str]) -> Optional[str]:
-        if description and len(description) > 500:
-            raise ValidationError("Agent description must be less than 500 characters long")
-        return description.strip() if description else None
-    
-    @staticmethod
-    def validate_agent_credit(credit: Optional[float]) -> Optional[float]:
-        if credit is not None and credit < 0:
-            raise ValidationError("Agent credit cannot be negative")
-        return credit if credit is not None else 0.0
-    
-    @staticmethod
-    def validate_agent_currency(currency: str) -> str:
-        valid_currencies = {"USD", "KHR"}
-        if currency not in valid_currencies:
-            raise ValidationError(f"Currency must be one of {valid_currencies}")
-        return currency
-    
 class RoleValidation:
     """Role-related validation utilities."""
 
@@ -155,3 +124,5 @@ class RoleValidation:
         if description and len(description) > 500:
             raise ValidationError("Role description must be less than 500 characters long")
         return description.strip() if description else None
+    
+

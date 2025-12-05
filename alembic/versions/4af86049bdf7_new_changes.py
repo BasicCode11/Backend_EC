@@ -26,14 +26,8 @@ def upgrade() -> None:
     op.drop_table('password_reset_tokens')
     op.drop_table('token_blacklist')  # This table has no FK, safe to drop directly
 
-    # Add new column
-    op.add_column('categories', sa.Column('image_public_id', sa.String(length=255), nullable=True))
-
 
 def downgrade() -> None:
-    # Remove new column
-    op.drop_column('categories', 'image_public_id')
-
     # Recreate dropped tables
     op.create_table(
         'email_verification_tokens',

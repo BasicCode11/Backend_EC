@@ -7,7 +7,7 @@ from decimal import Decimal
 class InventoryBase(BaseModel):
     variant_id: int
     stock_quantity: int = Field(0, ge=0)
-    reserved_quantity: int = Field(0, ge=0)
+    reserved_quantity: Optional[int] = Field(None, ge=0)
     low_stock_threshold: int = Field(10, ge=0)
     reorder_level: int = Field(5, ge=0)
     sku: Optional[str] = Field(None, max_length=100)

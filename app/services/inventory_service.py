@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
 from sqlalchemy import select, func, or_, and_, desc, asc
 from sqlalchemy.orm import Session, selectinload
-from datetime import datetime
+from datetime import datetime , timezone
 from app.models.inventory import Inventory
 from app.models.product import Product
 from app.models.user import User
@@ -118,7 +118,7 @@ class InventoryService:
     def get_by_id(db: Session, inventory_id: int) -> Optional[Inventory]:
         """Get inventory by ID"""
         query = select(Inventory).options(
-            selectinload(Inventory.product)
+            selectinload(Inventory.variant)
         ).where(Inventory.id == inventory_id)
         return db.execute(query).scalar_one_or_none()
     
@@ -126,15 +126,15 @@ class InventoryService:
     def get_by_product_id(db: Session, product_id: int) -> List[Inventory]:
         """Get all inventory records for a specific product"""
         query = select(Inventory).options(
-            selectinload(Inventory.product)
-        ).where(Inventory.product_id == product_id)
+            selectinload(Inventory.variant)
+        ).where(Inventory.variant.product_id == product_id)
         return db.execute(query).scalars().all()
 
     @staticmethod
     def get_by_sku(db: Session, sku: str) -> Optional[Inventory]:
         """Get inventory by SKU"""
         query = select(Inventory).options(
-            selectinload(Inventory.product)
+            selectinload(Inventory.variant)
         ).where(Inventory.sku == sku)
         return db.execute(query).scalar_one_or_none()
 
@@ -198,8 +198,20 @@ class InventoryService:
             if existing and existing.id != inventory_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Inventory with SKU {inventory_data.sku} already exists")
 
+        if(inventory_data.expiry_date):
+            expiry = inventory_data.expiry_date
+
+            if expiry:
+                if expiry < datetime.today():
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Expiry date must be today or in the future."
+                    )
+            
+                
+
         old_data = {
-            "product_id": float(inventory.product_id) if inventory.product_id else None,
+            "variant_iid": float(inventory.variant_id) if inventory.variant_id else None,
             "stock_quantity": float(inventory.stock_quantity) if inventory.stock_quantity else None,
             "reserved_quantity": float(inventory.reserved_quantity) if inventory.reserved_quantity else None,
             "low_stock_threshold": float(inventory.low_stock_threshold) if inventory.low_stock_threshold else None,
@@ -257,7 +269,7 @@ class InventoryService:
                 detail=f"Cannot delete inventory with reserved quantity ({inventory.reserved_quantity} units reserved)"
             )
         ldd_data = {
-            "product_id": float(inventory.product_id) if inventory.product_id else None,
+            "product_id": float(inventory.variant_id) if inventory.variant_id else None,
             "stock_quantity": float(inventory.stock_quantity) if inventory.stock_quantity else None,
             "reserved_quantity": float(inventory.reserved_quantity) if inventory.reserved_quantity else None,
             "low_stock_threshold": float(inventory.low_stock_threshold) if inventory.low_stock_threshold else None,
@@ -267,7 +279,7 @@ class InventoryService:
             "expiry_date": inventory.expiry_date.isoformat() if isinstance(inventory.expiry_date, datetime) else str(inventory.expiry_date) if inventory.expiry_date else None,
             "location": inventory.location if inventory.location else None,
         }
-        product_name = inventory.product.name if inventory.product else "Unknown"
+        
         
         db.delete(inventory)
         db.flush()
@@ -492,7 +504,7 @@ class InventoryService:
     def get_reorder_items(db: Session) -> List[Inventory]:
         """Get all inventory items that need reordering"""
         query = select(Inventory).options(
-            selectinload(Inventory.product)
+            selectinload(Inventory.variant)
         ).where(
             (Inventory.stock_quantity - Inventory.reserved_quantity) <= Inventory.reorder_level
         )
@@ -502,7 +514,7 @@ class InventoryService:
     def get_expired_items(db: Session) -> List[Inventory]:
         """Get all expired inventory items"""
         query = select(Inventory).options(
-            selectinload(Inventory.product)
+            selectinload(Inventory.variant)
         ).where(
             and_(
                 Inventory.expiry_date.isnot(None),
