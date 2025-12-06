@@ -132,6 +132,10 @@ class DataFactory:
             {"name": "variants:update"},
             {"name": "variants:delete"},
 
+            {"name": "product_image:read"},
+            {"name": "product_image:create"},
+            {"name": "product_image:update"},
+            {"name": "product_image:delete"},
         ]
 
     @staticmethod
@@ -244,6 +248,10 @@ class DataFactory:
                     {"name": "variants:read"},
                     {"name": "variants:update"},
                     {"name": "variants:delete"},
+                    {"name": "product_image:read"},
+                    {"name": "product_image:create"},
+                    {"name": "product_image:update"},
+                    {"name": "product_image:delete"},
                 ],
             },
             {
@@ -291,29 +299,14 @@ class DataFactory:
     def generate_users(num_users: int = 3) -> List[Dict[str, Any]]:
         return [
             {
-                "email": "admin@example.com",
+                "email": "kang@example.com",
                 "password": "admin123",  # raw password, hashed later
                 "first_name": "Admin",
                 "last_name": "User",
                 "phone": "+1234567890",
                 "role_name": "admin",
             },
-            {
-                "email": "customer1@example.com",
-                "password": "customer123",
-                "first_name": "John",
-                "last_name": "Doe",
-                "phone": "+1234567891",
-                "role_name": "customer",
-            },
-            {
-                "email": "customer2@example.com",
-                "password": "customer123",
-                "first_name": "Jane",
-                "last_name": "Smith",
-                "phone": "+1234567892",
-                "role_name": "customer",
-            }
+            
         ]
 
         

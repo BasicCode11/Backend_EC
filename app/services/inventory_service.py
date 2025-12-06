@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, selectinload
 from datetime import datetime , timezone
 from app.models.inventory import Inventory
 from app.models.product import Product
+from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.schemas.inventory import (
     InventoryCreate,
@@ -145,14 +146,11 @@ class InventoryService:
         current_user: User
     ) -> Inventory:
         """Create new inventory record"""
-        product = db.query(Product).filter(Product.id == inventory_data.product_id).first()
-        if not product:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Product with id {inventory_data.product_id} not found")
+        variant = db.query(ProductVariant).filter(ProductVariant.id == inventory_data.variant_id).first()
+        if not variant:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Variant with id {inventory_data.variant_id} not found")
 
-        if inventory_data.sku:
-            existing = InventoryService.get_by_sku(db, inventory_data.sku)
-            if existing:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Inventory with SKU {inventory_data.sku} already exists")
+        
 
         inventory = Inventory(**inventory_data.model_dump())
         db.add(inventory)
@@ -165,7 +163,7 @@ class InventoryService:
             entity_type="Inventory",
             entity_uuid=current_user.uuid,
             new_values={
-                "product_id": float(inventory.product_id) if inventory.product_id else None,
+                "variant_id": float(inventory.variant_id) if inventory.variant_id else None,
                 "stock_quantity": float(inventory.stock_quantity) if inventory.stock_quantity else None,
                 "reserved_quantity": float(inventory.reserved_quantity) if inventory.reserved_quantity else None,
                 "low_stock_threshold": float(inventory.low_stock_threshold) if inventory.low_stock_threshold else None,

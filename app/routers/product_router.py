@@ -685,7 +685,17 @@ def delete_product(
         )
 
 
-# Product Image Endpoints
+# # Product Image Endpoints
+# @router.get("/products/image",response_model=List[ProductImageResponse] )
+# def get_product_image(
+    
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(require_permission["product_image:read"])
+# ):
+    
+
+
+
 @router.post("/products/{product_id}/images", response_model=ProductImageResponse, status_code=status.HTTP_201_CREATED)
 def add_product_image(
     product_id: int,
