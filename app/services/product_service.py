@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple
 from sqlalchemy import select, func, or_, and_, desc, asc
 from sqlalchemy.orm import Session, selectinload
+from math import ceil
 from app.models.product import Product, ProductStatus
 from app.models.product_image import ProductImage
 from app.models.product_variant import ProductVariant
@@ -396,6 +397,36 @@ class ProductService:
         db.commit()
         db.refresh(db_image)
         return db_image
+
+    @staticmethod
+    def get_product_image(
+        db: Session,
+        current_user: User , 
+        product_id: Optional[int] = None ,
+        page: int = 1,
+        limit: int = 20 
+    ) -> dict:
+        query = select(ProductImage).options(selectinload(ProductImage.product))
+        if product_id:
+            query = query.where(ProductImage.product_id == product_id)
+        
+        count_query = select(func.count()).select_from(query.subquery())
+        total = db.execute(count_query).scalar()
+
+        # Paginate
+        skip = (page - 1) * limit
+        query = query.order_by(desc(ProductImage.created_at)).offset(skip).limit(limit)
+        
+        items = db.execute(query).scalars().all()
+        pages = ceil(total / limit) if total > 0 else 0
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": pages,
+        }
 
     @staticmethod
     def delete_image(db: Session, image_id: int) -> bool:

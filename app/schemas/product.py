@@ -22,6 +22,18 @@ class ProductImageBase(BaseModel):
 class ProductImageCreate(ProductImageBase):
     pass
 
+class ProductOut(BaseModel):
+    id: int
+    name: str
+
+class ProductImageShemas(ProductImageBase):
+    id: int
+    product_id: int
+    product: ProductOut
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class ProductImageResponse(ProductImageBase):
     id: int
@@ -245,3 +257,11 @@ class ProductSearchParams(BaseModel):
     limit: int = Field(20, ge=1, le=100)
     sort_by: Optional[str] = Field(None, pattern="^(name|price|created_at|updated_at)$")
     sort_order: Optional[str] = Field("asc", pattern="^(asc|desc)$")
+
+
+class ProductImagePaginatedResponse(BaseModel):
+    items: List[ProductImageShemas]
+    total: int
+    page: int
+    limit: int
+    pages: int

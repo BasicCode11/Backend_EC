@@ -17,6 +17,7 @@ from app.schemas.product import (
     ProductSearchParams,
     ProductImageCreate,
     ProductImageResponse,
+    ProductImagePaginatedResponse,
     ProductVariantCreate,
     ProductVariantUpdate,
     ProductVariantResponse,
@@ -386,6 +387,18 @@ def get_product_count(
     return {"count": count, "status": status, "category_id": category_id}
 
 
+
+@router.get("/products/image",response_model=ProductImagePaginatedResponse )
+def get_product_image(
+    limit: int = Query(20, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    product_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+   current_user: User = Depends(require_permission(["product_image:read"])),
+):
+    return ProductService.get_product_image(db=db , current_user=current_user , product_id=product_id , page=page , limit=limit)
+
+
 @router.get("/products/{product_id}", response_model=ProductWithDetails)
 def get_product(
     product_id: int,
@@ -685,14 +698,8 @@ def delete_product(
         )
 
 
-# # Product Image Endpoints
-# @router.get("/products/image",response_model=List[ProductImageResponse] )
-# def get_product_image(
-    
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(require_permission["product_image:read"])
-# ):
-    
+
+
 
 
 

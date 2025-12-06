@@ -3,6 +3,8 @@ from sqlalchemy import String, Integer, DateTime, ForeignKey, DECIMAL, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from app.database import Base
+from sqlalchemy.ext.hybrid import hybrid_property
+
 
 
 class Inventory(Base):
@@ -47,11 +49,15 @@ class Inventory(Base):
         Index('idx_inventory_stock', 'stock_quantity'),
     )
 
-    @property
+    @hybrid_property
     def available_quantity(self) -> int:
         """Get available quantity (stock - reserved)"""
         return self.stock_quantity - self.reserved_quantity
-
+    
+    @available_quantity.expression
+    def available_quantity(cls):
+        return cls.stock_quantity - cls.reserved_quantity
+    
     @property
     def is_low_stock(self) -> bool:
         """Check if inventory is below low stock threshold"""

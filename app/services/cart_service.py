@@ -1,4 +1,5 @@
 from typing import Optional
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 from app.models.shopping_cart import ShoppingCart
 from app.models.cart_item import CartItem
@@ -68,63 +69,47 @@ class CartService:
                 ProductVariant.id == cart_data.variant_id,
                 ProductVariant.product_id == cart_data.product_id
             ).first()
+
             if not variant:
                 raise NotFoundError(f"Variant with id {cart_data.variant_id} not found")
-        
-        # Check stock availability
-        inventory = db.query(Inventory).filter(
-            Inventory.product_id == cart_data.product_id
+        else:
+            # Based on the inventory model, a variant is required to check stock.
+            raise ValidationError("Adding a product to the cart requires specifying a variant.")
+
+        # Check if item already in cart to determine total quantity needed
+        existing_item = db.query(CartItem).filter(
+            CartItem.cart_id == cart.id,
+            CartItem.product_id == cart_data.product_id,
+            CartItem.variant_id == cart_data.variant_id
         ).first()
         
-        if not inventory:
-            raise ValidationError(f"No inventory found for product '{product.name}'")
+        new_quantity = (existing_item.quantity if existing_item else 0) + cart_data.quantity
         
-        if inventory.available_quantity < cart_data.quantity:
+        # Check stock availability by summing up all inventory for the variant
+        total_available_stock = db.query(func.sum(Inventory.available_quantity)).filter(
+            Inventory.variant_id == cart_data.variant_id
+        ).scalar() or 0
+
+
+        if total_available_stock < new_quantity:
             raise ValidationError(
-                f"Insufficient stock. Available: {inventory.available_quantity}, "
-                f"Requested: {cart_data.quantity}"
+                f"Insufficient stock for product '{variant.variant_name}'. "
+                f"Available: {total_available_stock}, Requested total: {new_quantity}"
             )
-        
-        # Check if item already in cart
-        # Handle None variant_id properly for SQL comparison
-        if cart_data.variant_id is None:
-            existing_item = db.query(CartItem).filter(
-                CartItem.cart_id == cart.id,
-                CartItem.product_id == cart_data.product_id,
-                CartItem.variant_id.is_(None)
-            ).first()
-        else:
-            existing_item = db.query(CartItem).filter(
-                CartItem.cart_id == cart.id,
-                CartItem.product_id == cart_data.product_id,
-                CartItem.variant_id == cart_data.variant_id
-            ).first()
-        
-        # Determine price
-        price = variant.effective_price if variant else product.price
+            
+        # Determine price (this is now fixed from the previous error)
+        price = variant.effective_price
         
         if existing_item:
-            # Update quantity
-            new_quantity = existing_item.quantity + cart_data.quantity
-            
-            # Check stock for new total
-            if inventory.available_quantity < new_quantity:
-                raise ValidationError(
-                    f"Insufficient stock. Available: {inventory.available_quantity}, "
-                    f"Cart has: {existing_item.quantity}, Trying to add: {cart_data.quantity}"
-                )
-            
+            # Update quantity and price
             existing_item.quantity = new_quantity
             existing_item.price = price
         else:
             # Create new cart item
-            # Ensure variant_id is None (not 0) if no variant selected
-            variant_id_value = cart_data.variant_id if cart_data.variant_id else None
-            
             cart_item = CartItem(
                 cart_id=cart.id,
                 product_id=cart_data.product_id,
-                variant_id=variant_id_value,
+                variant_id=cart_data.variant_id,
                 quantity=cart_data.quantity,
                 price=price
             )
@@ -154,15 +139,19 @@ class CartService:
         
         if not cart_item:
             raise NotFoundError(f"Cart item with id {cart_item_id} not found")
+
+        # Inventory is managed at the variant level, so variant_id must exist for stock check
+        if not cart_item.variant_id:
+            raise ValidationError("Cannot update cart item without a variant for stock check.")
+            
+        # Check stock availability by summing up all inventory for the variant
+        total_available_stock = db.query(func.sum(Inventory.available_quantity)).filter(
+            Inventory.variant_id == cart_item.variant_id
+        ).scalar() or 0
         
-        # Check stock availability
-        inventory = db.query(Inventory).filter(
-            Inventory.product_id == cart_item.product_id
-        ).first()
-        
-        if inventory and inventory.available_quantity < update_data.quantity:
+        if total_available_stock < update_data.quantity:
             raise ValidationError(
-                f"Insufficient stock. Available: {inventory.available_quantity}, "
+                f"Insufficient stock. Available: {total_available_stock}, "
                 f"Requested: {update_data.quantity}"
             )
         

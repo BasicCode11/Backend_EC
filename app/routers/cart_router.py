@@ -39,14 +39,11 @@ def transform_cart_response(cart) -> ShoppingCartResponse:
     for item in cart.items:
         # Get stock info
         stock_available = 0
-        if item.product and item.product.inventory:
-            stock_available = sum(inv.available_quantity for inv in item.product.inventory)
+        if item.variant and item.variant.inventory:
+            stock_available = sum(inv.available_quantity for inv in item.variant.inventory)
         
         # Get image
-        image_url = None
-        if item.variant and item.variant.image_url:
-            image_url = item.variant.image_url
-        elif item.product and item.product.images:
+        if item.product and item.product.images:
             for img in item.product.images:
                 if img.is_primary:
                     image_url = img.image_url

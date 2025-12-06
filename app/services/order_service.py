@@ -44,15 +44,8 @@ class OrderService:
         user_agent: Optional[str] = None
     ) -> Order:
         """
-        Create order from user's cart and reduce inventory.
-        
-        Steps:
-        1. Get user's cart items
-        2. Validate stock availability
-        3. Reserve inventory
-        4. Create order
-        5. Clear cart
-        6. Fulfill inventory (reduce stock)
+        Create order from user's cart, validate stock, and create order items.
+        This process is done within a single transaction to ensure data integrity.
         """
         # 1. Get user's cart
         cart = db.query(ShoppingCart).filter(
@@ -66,158 +59,108 @@ class OrderService:
             raise ValidationError("Cart is empty. Add items before checkout.")
 
         # 2. Validate stock availability for all items
-        for cart_item in cart.items:
-            product = cart_item.product
+        for item in cart.items:
+            if not item.variant_id:
+                raise ValidationError(f"Product '{item.product.name}' in cart is missing a variant selection.")
             
-            # Get inventory for this product
-            inventory = db.query(Inventory).filter(
-                Inventory.product_id == product.id
-            ).first()
-            
-            if not inventory:
+            total_available_stock = db.query(func.sum(Inventory.available_quantity)).filter(
+                Inventory.variant_id == item.variant_id
+            ).scalar() or 0
+
+            if total_available_stock < item.quantity:
                 raise ValidationError(
-                    f"No inventory record found for product '{product.name}'. "
-                    "Please contact support."
-                )
-            
-            available = inventory.available_quantity
-            if available < cart_item.quantity:
-                raise ValidationError(
-                    f"Insufficient stock for '{product.name}'. "
-                    f"Available: {available}, Requested: {cart_item.quantity}"
+                    f"Insufficient stock for '{item.product.name} - {item.variant.variant_name}'. "
+                    f"Available: {total_available_stock}, Requested: {item.quantity}"
                 )
 
-        # 3. Reserve inventory for all items first
-        reserved_items = []
+        # 3. Create the Order
         try:
-            for cart_item in cart.items:
-                inventory = db.query(Inventory).filter(
-                    Inventory.product_id == cart_item.product_id
-                ).first()
-                
-                if not inventory.reserve_quantity(cart_item.quantity):
-                    raise ValidationError(
-                        f"Failed to reserve stock for '{cart_item.product.name}'"
-                    )
-                
-                reserved_items.append((inventory, cart_item.quantity))
-                db.flush()
-        
-        except Exception as e:
-            # Rollback reservations on error
-            for inventory, quantity in reserved_items:
-                inventory.release_quantity(quantity)
-            db.rollback()
-            raise e
+            # Calculate totals
+            subtotal = cart.total_amount
+            tax_amount = 0.0  # Placeholder
+            shipping_amount = 0.0  # Placeholder
+            discount_amount = 0.0  # Placeholder
+            total_amount = subtotal + tax_amount + shipping_amount - discount_amount
 
-        # 4. Create order
-        order_number = OrderService._generate_order_number()
-        
-        # Calculate totals
-        subtotal = float(cart.total_amount)
-        tax_amount = 0.0  # TODO: Implement tax calculation
-        shipping_amount = 0.0  # TODO: Implement shipping calculation
-        discount_amount = 0.0  # TODO: Implement discount logic
-        total_amount = subtotal + tax_amount + shipping_amount - discount_amount
-
-        # Create order
-        order = Order(
-            order_number=order_number,
-            user_id=current_user.id,
-            status=OrderStatus.PENDING.value,
-            subtotal=subtotal,
-            tax_amount=tax_amount,
-            shipping_amount=shipping_amount,
-            discount_amount=discount_amount,
-            total_amount=total_amount,
-            payment_status=PaymentStatus.PENDING.value,
-            shipping_address_id=checkout_data.shipping_address_id,
-            billing_address_id=checkout_data.billing_address_id or checkout_data.shipping_address_id,
-            notes=checkout_data.notes
-        )
-        
-        db.add(order)
-        db.flush()
-
-        # Create order items from cart items
-        for cart_item in cart.items:
-            order_item = OrderItem(
-                order_id=order.id,
-                product_id=cart_item.product_id,
-                variant_id=cart_item.variant_id,
-                product_name=cart_item.product.name,
-                product_sku=cart_item.variant.sku if cart_item.variant else None,
-                variant_attributes=cart_item.variant.attributes if cart_item.variant else None,
-                quantity=cart_item.quantity,
-                unit_price=float(cart_item.price),
-                total_price=float(cart_item.total_price)
+            order = Order(
+                order_number=OrderService._generate_order_number(),
+                user_id=current_user.id,
+                status=OrderStatus.PROCESSING.value,
+                payment_status=PaymentStatus.PAID.value, # Assuming payment is successful
+                subtotal=subtotal,
+                tax_amount=tax_amount,
+                shipping_amount=shipping_amount,
+                discount_amount=discount_amount,
+                total_amount=total_amount,
+                shipping_address_id=checkout_data.shipping_address_id,
+                billing_address_id=checkout_data.billing_address_id or checkout_data.shipping_address_id,
+                notes=checkout_data.notes
             )
-            db.add(order_item)
-
-        db.flush()
-
-        # 5. Fulfill inventory (reduce stock from both inventory AND variant)
-        for cart_item in cart.items:
-            inventory = db.query(Inventory).filter(
-                Inventory.product_id == cart_item.product_id
-            ).first()
-            
-            # Release reserved quantity first
-            inventory.reserved_quantity -= cart_item.quantity
-            
-            # Use StockValidationService to reduce stock from both inventory and variant
-            updated_inventory, updated_variant = StockValidationService.reduce_stock(
-                db=db,
-                product_id=cart_item.product_id,
-                variant_id=cart_item.variant_id,
-                quantity=cart_item.quantity
-            )
-            
+            db.add(order)
             db.flush()
 
-            # Log inventory fulfillment
-            log_message = (
-                f"Fulfilled {cart_item.quantity} units for order {order.order_number}. "
-                f"Inventory stock: {updated_inventory.stock_quantity}, "
-                f"Reserved: {updated_inventory.reserved_quantity}"
-            )
+            # 4. Create OrderItems and reduce stock
+            for item in cart.items:
+                # Create OrderItem, freezing the data
+                variant_attrs = {
+                    "color": item.variant.color,
+                    "size": item.variant.size,
+                    "weight": item.variant.weight,
+                } if item.variant else {}
+
+                order_item = OrderItem(
+                    order_id=order.id,
+                    product_id=item.product_id,
+                    variant_id=item.variant_id,
+                    product_name=item.product.name,
+                    product_sku=item.variant.sku if item.variant else item.product.sku, # Assuming product might have a base SKU
+                    variant_attributes=variant_attrs,
+                    quantity=item.quantity,
+                    unit_price=item.price,
+                    total_price=item.total_price
+                )
+                db.add(order_item)
+                
+                # Reduce stock from inventory records for this variant
+                quantity_to_reduce = item.quantity
+                inventories = db.query(Inventory).filter(
+                    Inventory.variant_id == item.variant_id,
+                    Inventory.available_quantity > 0
+                ).order_by(Inventory.created_at).all() # FIFO
+
+                for inv in inventories:
+                    if quantity_to_reduce == 0:
+                        break
+                    
+                    reducible = min(inv.available_quantity, quantity_to_reduce)
+                    inv.stock_quantity -= reducible
+                    quantity_to_reduce -= reducible
             
-            if updated_variant:
-                log_message += f", Variant '{updated_variant.variant_name}' stock: {updated_variant.stock_quantity}"
+            # 5. Clear the cart
+            db.query(CartItem).filter(CartItem.cart_id == cart.id).delete()
             
+            # 6. Log and Commit
             AuditLogService.log_create(
                 db=db,
                 user_id=current_user.id,
-                entity_type="ORDER_FULFILLED",
-                entity_id=inventory.id,
-                new_values=log_message
+                entity_type="Order",
+                entity_id=order.id,
+                new_values={
+                    "order_number": order.order_number,
+                    "total_amount": float(order.total_amount),
+                    "status": order.status,
+                },
+                ip_address=ip_address,
+                user_agent=user_agent
             )
+            
+            db.commit()
+            db.refresh(order)
+            return order
 
-        # 6. Clear cart
-        cart.items.clear()
-        db.flush()
-
-        # Log order creation
-        AuditLogService.log_create(
-            db=db,
-            user_id=current_user.id,
-            entity_type="Order",
-            entity_id=order.id,
-            entity_uuid=str(order.id),
-            new_values={
-                "order_number": order.order_number,
-                "total_amount": float(order.total_amount),
-                "status": order.status,
-                "items_count": len(order.items)
-            },
-            ip_address=ip_address,
-            user_agent=user_agent
-        )
-
-        db.commit()
-        db.refresh(order)
-        
-        return order
+        except Exception as e:
+            db.rollback()
+            raise e
 
     @staticmethod
     def get_all(

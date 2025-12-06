@@ -74,8 +74,13 @@ class ProductVariant(Base):
 
     @property
     def effective_price(self) -> float:
-        """Get effective price (variant price or product price)"""
-        return self.price if self.price is not None else self.product.price
+        """
+        Calculates the effective price of the variant.
+        It's the product's base price plus the variant's additional price.
+        """
+        base_price = self.product.price if self.product else 0
+        additional = self.additional_price if self.additional_price is not None else 0
+        return float(base_price) + float(additional)
 
     # NOTE: stock_quantity is now a database column, not a computed property
     # This will be migrated to the Inventory table in a future update
