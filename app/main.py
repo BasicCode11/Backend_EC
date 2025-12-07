@@ -19,6 +19,7 @@ from .routers.audit_log_router import router as audit_log_router
 from .routers.brand_router import router as brand_router
 from .routers.category_router import router as category_router
 from .routers.product_router import router as product_router
+from .routers.catalog_router import router as catalog_router
 from .routers.inventory_router import router as inventory_router
 from .routers.telegram_router import router as telegram_router
 from .routers.order_router import router as order_router
@@ -66,6 +67,7 @@ app.include_router(audit_log_router, prefix="/api", tags=["Audit Logs"])
 app.include_router(brand_router, prefix="/api", tags=["Brands"])
 app.include_router(category_router, prefix="/api", tags=["Categories"])
 app.include_router(product_router, prefix="/api", tags=["Products"])
+app.include_router(catalog_router, prefix="/api", tags=["Catalog"])
 app.include_router(variant_router, prefix="/api", tags=["Product Variants"])
 app.include_router(inventory_router, prefix="/api", tags=["Inventory"])
 app.include_router(telegram_router, prefix="/api/alerts", tags=["Inventory Alerts"])

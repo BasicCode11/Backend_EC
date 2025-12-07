@@ -110,12 +110,12 @@ class Product(Base):
         return self.status == ProductStatus.ACTIVE.value
 
     @property
-    def primary_image(self) -> Optional["ProductImage"]:
+    def primary_image(self) -> Optional[str]:
         """Get the primary product image"""
         for image in self.images:
             if image.is_primary:
-                return image
-        return self.images[0] if self.images else None
+                return image.image_url
+        return self.images[0].image_url if self.images else None
 
     @property
     def total_stock(self) -> int:

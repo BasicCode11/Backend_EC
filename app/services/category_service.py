@@ -16,7 +16,7 @@ class CategoryService:
     @staticmethod
     def get_all(
         db: Session,
-        page: int = 0,
+        page: int = 1,
         limit: int = 100,
         is_active: Optional[bool] = None,
         parent_id: Optional[int] = None
