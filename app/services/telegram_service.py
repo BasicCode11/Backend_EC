@@ -290,6 +290,41 @@ class TelegramService:
         return "\n".join(message_lines)
 
     @staticmethod
+    def format_expiry_soon_alert(items: list, days_threshold: int) -> str:
+        """
+        Format items expiring soon into a Telegram message.
+        """
+        if not items:
+            return f"✅ <b>No items are expiring in the next {days_threshold} days.</b>"
+
+        message_lines = [
+            f"⏳ <b>EXPIRY SOON ALERT ({days_threshold} DAYS)</b> ⏳",
+            "",
+            f"Heads up! <b>{len(items)} item(s)</b> are expiring soon:",
+            ""
+        ]
+
+        for idx, item in enumerate(items, 1):
+            product_name = item.variant.product.name if item.variant and hasattr(item.variant, 'product') and item.variant.product else "Unknown Product"
+            variant_name = f" ({item.variant.variant_name})" if item.variant and item.variant.variant_name else ""
+            sku = item.sku or "N/A"
+            expiry_date_str = item.expiry_date.strftime("%Y-%m-%d") if item.expiry_date else "N/A"
+            days_left_val = (item.expiry_date - datetime.now(item.expiry_date.tzinfo)).days if item.expiry_date else 'N/A'
+
+
+            message_lines.append(f"<b>{idx}. {product_name}{variant_name}</b>")
+            message_lines.append(f"   🗓️ Expires on: <b>{expiry_date_str}</b> ({days_left_val} days left)")
+            message_lines.append(f"   📦 Stock: {item.available_quantity} units")
+            message_lines.append(f"   🔖 SKU: {sku}")
+            message_lines.append("")
+
+        message_lines.append("ACTION: Prioritize selling these items!")
+        message_lines.append("")
+        message_lines.append(f"🕐 Alert sent at: {TelegramService._get_current_time()}")
+
+        return "\n".join(message_lines)
+
+    @staticmethod
     def _get_current_time() -> str:
         """Get current time as formatted string"""
         from datetime import datetime

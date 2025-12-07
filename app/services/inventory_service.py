@@ -522,6 +522,23 @@ class InventoryService:
         return db.execute(query).scalars().all()
 
     @staticmethod
+    def get_expiring_soon_items(db: Session, days_threshold: int = 30) -> List[Inventory]:
+        """Get all inventory items that are expiring soon"""
+        from datetime import timedelta
+
+        future_date = datetime.now() + timedelta(days=days_threshold)
+        query = select(Inventory).options(
+            selectinload(Inventory.variant)
+        ).where(
+            and_(
+                Inventory.expiry_date.isnot(None),
+                Inventory.expiry_date <= future_date,
+                Inventory.expiry_date >= datetime.now()
+            )
+        ).order_by(Inventory.expiry_date)
+        return db.execute(query).scalars().all()
+
+    @staticmethod
     def get_statistics(db: Session) -> dict:
         """Get inventory statistics"""
         total_products = db.query(func.count(Inventory.id)).scalar()

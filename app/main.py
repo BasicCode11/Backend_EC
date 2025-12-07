@@ -83,22 +83,22 @@ def health():
 
 
 # ==============================
-# 🕒 Weekly Inventory Alert Scheduler
+# 🕒 Daily Inventory Alert Scheduler
 # ==============================
-def send_weekly_inventory_alerts():
-    """Automatically send weekly inventory alerts."""
+def send_daily_inventory_alerts():
+    """Automatically send daily inventory alerts."""
     db = SessionLocal()
     try:
         InventoryAlertService.send_daily_report(db)
-        print("✅ Weekly inventory alert sent successfully.")
+        print("✅ Daily inventory alert sent successfully.")
     except Exception as e:
-        print(f"❌ Error sending weekly alert: {str(e)}")
+        print(f"❌ Error sending daily alert: {str(e)}")
     finally:
         db.close()
 
 
 scheduler = BackgroundScheduler()
-# Every Sunday at 9:00 AM
-scheduler.add_job(send_weekly_inventory_alerts, "cron", day_of_week="sun", hour=9, minute=0)
+# Every day at 9:00 AM
+scheduler.add_job(send_daily_inventory_alerts, "cron", hour=9, minute=0)
 scheduler.start()
-print("Weekly inventory alert scheduler started (Every Sunday 9AM)")
+print("Daily inventory alert scheduler started (Every day 9AM)")

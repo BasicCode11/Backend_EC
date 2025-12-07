@@ -203,6 +203,42 @@ class InventoryAlertService:
             return {"success": False, "message": f"Error: {str(e)}"}
 
     # =========================
+    # 🗓️ EXPIRY SOON ALERT
+    # =========================
+    @staticmethod
+    def send_expiry_soon_alerts(db: Session, days_threshold: int = 30) -> Dict[str, Any]:
+        """Send Telegram alerts for items expiring soon."""
+        try:
+            expiring_items = InventoryService.get_expiring_soon_items(db, days_threshold=days_threshold)
+            if not expiring_items:
+                logger.info(f"No items expiring within {days_threshold} days")
+                return {"success": True, "message": "No items expiring soon", "count": 0}
+
+            message = TelegramService.format_expiry_soon_alert(expiring_items, days_threshold)
+            telegram_result = TelegramService.send_message(message)
+
+            return {
+                "success": telegram_result.get("ok", False),
+                "message": "Expiry soon alert sent successfully"
+                if telegram_result.get("ok")
+                else f"Failed to send alert: {telegram_result.get('error')}",
+                "count": len(expiring_items),
+                "items": [
+                    {
+                        "id": item.id,
+                        "product_name": item.variant.product.name if item.variant and item.variant.product else "Unknown",
+                        "variant_name": item.variant.variant_name if item.variant else "Unknown",
+                        "sku": item.sku,
+                        "expiry_date": item.expiry_date.strftime("%Y-%m-%d") if item.expiry_date else "N/A",
+                    }
+                    for item in expiring_items
+                ],
+            }
+        except Exception as e:
+            logger.error(f"Error sending expiry soon alert: {str(e)}")
+            return {"success": False, "message": f"Error: {str(e)}"}
+
+    # =========================
     # 🗓️ DAILY REPORT
     # =========================
     @staticmethod
@@ -214,6 +250,7 @@ class InventoryAlertService:
                 "low_stock": InventoryAlertService.send_low_stock_alerts(db),
                 "reorder": InventoryAlertService.send_reorder_alerts(db),
                 "out_of_stock": InventoryAlertService.send_out_of_stock_alerts(db),
+                "expiry_soon": InventoryAlertService.send_expiry_soon_alerts(db),
             }
 
             return {"success": True, "message": "Daily inventory report sent", "results": results}
