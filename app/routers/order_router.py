@@ -10,6 +10,7 @@ from app.schemas.order import (
     OrderResponse,
     OrderWithDetails,
     OrderListResponse,
+    DashboardOrderResponse,
     OrderUpdate,
     OrderStatus as OrderStatusEnum,
     PaymentStatus as PaymentStatusEnum
@@ -100,6 +101,17 @@ def checkout(
             detail=f"Failed to create order: {str(e)}"
         )
 
+@router.get("/orders/dashboard" , response_model=DashboardOrderResponse)
+def list_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    orders, total = OrderService.get_fordashboard(db)
+
+    return DashboardOrderResponse(
+        items=[OrderResponse.model_validate(o) for o in orders],
+        total=total,
+    )
 
 @router.get("/orders", response_model=OrderListResponse)
 def list_orders(

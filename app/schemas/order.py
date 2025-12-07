@@ -117,7 +117,10 @@ class OrderListResponse(BaseModel):
     limit: int
     pages: int
 
-
+class DashboardOrderResponse(BaseModel):
+    items: List[OrderResponse]
+    total: int
+    
 class OrderSearchParams(BaseModel):
     status: Optional[OrderStatus] = None
     payment_status: Optional[PaymentStatus] = None

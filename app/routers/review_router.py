@@ -424,7 +424,7 @@ def approve_review(
     review_id: int,
     approval_data: ReviewApprovalUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["reviews:manage"]))
+    current_user: User = Depends(require_permission(["reviews:update"]))
 ):
     """
     **Approve or reject a review (Admin only)**

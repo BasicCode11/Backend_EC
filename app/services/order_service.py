@@ -163,6 +163,17 @@ class OrderService:
             raise e
 
     @staticmethod
+    def get_fordashboard(db: Session):
+        base_query = db.query(Order).options(selectinload(Order.items))
+
+        total = base_query.count()
+        orders = base_query.order_by(Order.created_at.desc()).all()
+
+        return orders, total
+
+
+
+    @staticmethod
     def get_all(
         db: Session,
         skip: int = 0,
