@@ -136,6 +136,11 @@ class DataFactory:
             {"name": "product_image:create"},
             {"name": "product_image:update"},
             {"name": "product_image:delete"},
+
+            {"name": "customer:read"},
+            {"name": "customer:create"},
+            {"name": "customer:update"},
+            {"name": "customer:delete"},
         ]
 
     @staticmethod
@@ -252,6 +257,11 @@ class DataFactory:
                     {"name": "product_image:create"},
                     {"name": "product_image:update"},
                     {"name": "product_image:delete"},
+
+                    {"name": "customer:read"},
+                    {"name": "customer:create"},
+                    {"name": "customer:update"},
+                    {"name": "customer:delete"},
                 ],
             },
             {

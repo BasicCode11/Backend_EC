@@ -374,7 +374,7 @@ def get_pending_reviews(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["reviews:manage"]))
+    current_user: User = Depends(require_permission(["reviews:read"]))
 ):
     """
     **Get all pending reviews (Admin only)**
