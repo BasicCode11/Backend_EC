@@ -116,7 +116,7 @@ class EmailService:
     def send_verification_email(
         db: Session,
         recipient_email: str,
-        frontend_url: str = "http://localhost:3000"
+        frontend_url: str = "http://localhost:5173"
     ) -> EmailNotification:
         """Send email verification link"""
         verification_link = f"{frontend_url}"

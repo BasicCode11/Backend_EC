@@ -177,7 +177,7 @@ def get_current_user_endpoint(user: User = Depends(get_current_user)):
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
-@limiter.limit("3/hour")  # Max 3 password reset requests per hour
+# @limiter.limit("3/hour")  # Max 3 password reset requests per hour
 def forgot_password(request: Request, forgot_req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """
     Request password reset - sends email with 6-digit verification code
@@ -195,7 +195,7 @@ def forgot_password(request: Request, forgot_req: ForgotPasswordRequest, db: Ses
 
 
 @router.post("/verify-reset-code", response_model=VerifyResetCodeResponse)
-@limiter.limit("5/hour")  # Max 5 verification attempts per hour
+# @limiter.limit("5/hour")  # Max 5 verification attempts per hour
 def verify_reset_code(request: Request, verify_req: VerifyResetCodeRequest, db: Session = Depends(get_db)):
     """
     Verify the 6-digit code sent to email
