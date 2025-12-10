@@ -39,6 +39,7 @@ def get_catalog(
         db,
         skip=skip,
         limit=limit,
+        featured=True,  # Only show featured products on the catalog page
         status="active",  # Only show active products to customers
         category_id=category_id,
         brand_id=brand_id,
