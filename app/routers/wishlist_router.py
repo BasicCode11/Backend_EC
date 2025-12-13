@@ -49,8 +49,6 @@ def get_wishlist(
         # Get stock
         stock = WishlistService.get_product_stock(db, product.id)
         
-        # Determine price
-        price = variant.effective_price if variant else product.price
         
         items.append(WishlistItemResponse(
             id=item.id,

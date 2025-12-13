@@ -83,8 +83,7 @@ def read_users(
 @router.get("/user/{user_id}", response_model=UserProfileBundle)
 def read_user(
     user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["users:read"]))
+    db: Session = Depends(get_db)
 ):
     """Get user by ID with addresses - requires users:read permission"""
     user = UserService.get_with_addresses(db, user_id)

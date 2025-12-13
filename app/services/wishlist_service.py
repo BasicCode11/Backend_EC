@@ -193,8 +193,13 @@ class WishlistService:
     @staticmethod
     def get_product_stock(db: Session, product_id: int) -> int:
         """Get available stock for product"""
+        variant_of_product = db.query(ProductVariant).filter(
+            ProductVariant.product_id == product_id
+        ).first()
+        if not variant_of_product:
+            return 0
         inventory = db.query(Inventory).filter(
-            Inventory.product_id == product_id
+            Inventory.variant_id  == variant_of_product.id
         ).first()
         
         if not inventory:

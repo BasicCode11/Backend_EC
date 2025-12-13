@@ -26,6 +26,8 @@ class CartItemResponse(BaseModel):
     variant_id: Optional[int] = None
     product_name: str
     variant_name: Optional[str] = None
+    color: Optional[str] = None
+    size: Optional[str] = None
     quantity: int
     price: Decimal
     total_price: Decimal
