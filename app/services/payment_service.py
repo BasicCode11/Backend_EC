@@ -182,6 +182,12 @@ class ABAPayWayService:
         # Build hash for check transaction: req_time + merchant_id + tran_id
         hash_string = f"{req_time}{settings.ABA_PAYWAY_MERCHANT_ID}{transaction_id}"
         
+        print(f"=== CHECK TRANSACTION DEBUG ===")
+        print(f"Transaction ID: {transaction_id}")
+        print(f"Merchant ID: {settings.ABA_PAYWAY_MERCHANT_ID}")
+        print(f"Req Time: {req_time}")
+        print(f"Hash String: {hash_string}")
+        
         check_hash = hmac.new(
             settings.ABA_PAYWAY_PUBLIC_KEY.encode('utf-8'),
             hash_string.encode('utf-8'),
@@ -189,12 +195,17 @@ class ABAPayWayService:
         )
         hash_value = base64.b64encode(check_hash.digest()).decode('utf-8')
         
+        print(f"Hash Value: {hash_value}")
+        print(f"URL: {settings.ABA_PAYWAY_CHECK_TRANSACTION_URL}")
+        
         check_data = {
             "req_time": req_time,
             "merchant_id": settings.ABA_PAYWAY_MERCHANT_ID,
             "tran_id": transaction_id,
             "hash": hash_value
         }
+        
+        print(f"Request Data: {check_data}")
         
         try:
             with httpx.Client(timeout=30.0) as client:
@@ -219,11 +230,18 @@ class ABAPayWayService:
                 status = response_data.get("status", {})
                 data = response_data.get("data", {})
                 
+                print(f"ABA Response Status: {status}")
+                print(f"ABA Response Data: {data}")
+                
                 if status.get("code") == "00":
                     # Successful response from ABA
                     payment_status = data.get("payment_status", "").upper()
                     
-                    if payment_status in ["APPROVED", "COMPLETED", "SUCCESS"]:
+                    print(f"Payment Status from ABA: {payment_status}")
+                    
+                    # Check for successful payment statuses
+                    # ABA may return: APPROVED, COMPLETED, SUCCESS, CAPTURED
+                    if payment_status in ["APPROVED", "COMPLETED", "SUCCESS", "CAPTURED", "PAID"]:
                         # Payment verified as successful
                         payment.status = "completed"
                         payment.gateway_response["paid_at"] = datetime.now(timezone.utc).isoformat()
@@ -252,18 +270,18 @@ class ABAPayWayService:
                             "apv": data.get("apv")
                         }
                     
-                    elif payment_status == "PENDING":
-                        db.commit()
+                    elif payment_status in ["PENDING", "PROCESSING", "INITIATED", ""]:
+                        # Still pending - don't commit changes
                         return {
                             "status": "pending",
                             "verified": True,
-                            "payment_status": payment_status,
+                            "payment_status": payment_status or "PENDING",
                             "order_id": order.id,
                             "message": "Payment is still processing"
                         }
                     
                     else:
-                        # Payment failed
+                        # Payment failed or cancelled
                         payment.status = "failed"
                         order.payment_status = OrderPaymentStatus.FAILED.value
                         db.commit()
@@ -278,7 +296,7 @@ class ABAPayWayService:
                 else:
                     # Error from ABA API
                     error_msg = status.get("message", "Unknown error")
-                    db.commit()
+                    print(f"ABA API Error: {error_msg}")
                     
                     return {
                         "status": "error",
