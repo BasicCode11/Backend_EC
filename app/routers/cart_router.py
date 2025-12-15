@@ -58,6 +58,8 @@ def transform_cart_response(cart) -> ShoppingCartResponse:
             variant_id=item.variant_id,
             product_name=item.product.name,
             variant_name=item.variant.variant_name if item.variant else None,
+            color=item.variant.color if item.variant else None,
+            size=item.variant.size if item.variant else None,
             quantity=item.quantity,
             price=item.price,
             total_price=item.total_price,

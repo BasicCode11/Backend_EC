@@ -25,7 +25,6 @@ def list_brands(
     status: Optional[str] = Query(None, pattern="^(active|inactive)$", description="Filter by status"),
     search: Optional[str] = Query(None, description="Search by brand name"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["brands:read"]))
 ):
     """
     List all brands with optional filters.
