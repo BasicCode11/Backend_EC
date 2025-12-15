@@ -109,39 +109,118 @@ def aba_payway_callback(
     
     This endpoint receives payment confirmation from ABA PayWay.
     
-    **Called by:** ABA PayWay servers (after customer completes payment)
-    
-    **What it does:**
-    1. Verifies the callback hash (security)
-    2. Updates payment status
-    3. Updates order payment_status
-    4. Logs the transaction
-    
-    **Return URL Flow:**
-    ```
-    Customer pays on ABA → ABA calls this endpoint → Payment status updated
-    ```
+    **BEST PRACTICE FLOW:**
+    1. ABA calls this endpoint after customer pays
+    2. We verify by calling ABA's get-transaction-detail API
+    3. Mark order as PAID or FAILED based on verification
+    4. Return success to ABA
     
     **Note:** This endpoint should be publicly accessible (no authentication)
     as it's called by ABA PayWay servers, not your frontend.
     """
     try:
+        print(f"=== ABA CALLBACK RECEIVED ===")
+        print(f"Transaction ID: {callback_data.tran_id}")
+        print(f"Status: {callback_data.status}")
+        print(f"Amount: {callback_data.amount}")
+        
+        # Step 1: First verify the callback itself
         result = ABAPayWayService.verify_callback(db, callback_data)
+        
+        # Step 2: Call ABA's API to verify the transaction (Best Practice Step 6)
+        verification = ABAPayWayService.get_transaction_detail(
+            db=db,
+            transaction_id=callback_data.tran_id
+        )
+        
+        print(f"ABA Verification Result: {verification}")
         
         # Return success response to ABA
         return {
             "status": "success",
-            "message": "Payment callback processed",
-            "data": result
+            "message": "Payment callback processed and verified",
+            "data": {
+                "callback_result": result,
+                "verification": verification
+            }
         }
         
     except (ValidationError, NotFoundError) as e:
+        print(f"Callback Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
         # Log error but return 200 to prevent ABA from retrying
+        print(f"Callback Exception: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+@router.post("/payments/check-transaction")
+def check_transaction_with_aba(
+    verify_data: PaymentVerifyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    **Check Transaction Status with ABA PayWay API**
+    
+    This is the MANDATORY Check Transaction API that verifies payment status 
+    directly with ABA's servers.
+    
+    **When to use:**
+    1️⃣ After callback to confirm payment status is successful
+    2️⃣ If callback doesn't push to your side (network issues, etc.)
+    3️⃣ Poll every 3-5 seconds after user initiates payment
+    
+    **Recommended polling strategy:**
+    - Start polling 20 seconds after payment initiation
+    - Poll every 3-5 seconds
+    - Stop after 3-5 minutes (QR expires)
+    - If payment is completed/successful, stop polling
+    
+    **Response status values:**
+    - "completed": Payment successful ✅
+    - "pending": Still waiting for payment ⏳
+    - "failed": Payment failed or cancelled ❌
+    - "error": Could not verify with ABA ⚠️
+    """
+    try:
+        # Verify order belongs to user
+        order = OrderService.get_by_id(db, verify_data.order_id)
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Order not found"
+            )
+        
+        if order.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized"
+            )
+        
+        # Call ABA's Check Transaction API
+        result = ABAPayWayService.get_transaction_detail(
+            db=db,
+            transaction_id=verify_data.transaction_id
+        )
+        
+        print(f"Check Transaction Result: {result}")
+        
+        return result
+        
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        print(f"Check Transaction Error: {str(e)}")
         return {
             "status": "error",
             "message": str(e)

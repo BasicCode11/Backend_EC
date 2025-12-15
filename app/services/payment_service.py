@@ -153,6 +153,151 @@ class ABAPayWayService:
         )
 
     @staticmethod
+    def get_transaction_detail(
+        db: Session,
+        transaction_id: str
+    ) -> Dict[str, Any]:
+        """
+        Call ABA PayWay API to get transaction details
+        
+        This is the verification step (Step 6 in the flow):
+        - Called after ABA callback to verify the payment
+        - Uses the check-transaction or get-transaction-details API
+        """
+        # Find our payment record
+        payment = db.query(Payment).filter(
+            Payment.payment_gateway_transaction_id == transaction_id
+        ).first()
+        
+        if not payment:
+            raise NotFoundError(f"Payment with transaction ID {transaction_id} not found")
+        
+        order = db.query(Order).filter(Order.id == payment.order_id).first()
+        if not order:
+            raise NotFoundError(f"Order with ID {payment.order_id} not found")
+        
+        # Prepare request for ABA check-transaction API
+        req_time = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        
+        # Build hash for check transaction: req_time + merchant_id + tran_id
+        hash_string = f"{req_time}{settings.ABA_PAYWAY_MERCHANT_ID}{transaction_id}"
+        
+        check_hash = hmac.new(
+            settings.ABA_PAYWAY_PUBLIC_KEY.encode('utf-8'),
+            hash_string.encode('utf-8'),
+            hashlib.sha512
+        )
+        hash_value = base64.b64encode(check_hash.digest()).decode('utf-8')
+        
+        check_data = {
+            "req_time": req_time,
+            "merchant_id": settings.ABA_PAYWAY_MERCHANT_ID,
+            "tran_id": transaction_id,
+            "hash": hash_value
+        }
+        
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(
+                    settings.ABA_PAYWAY_CHECK_TRANSACTION_URL,
+                    data=check_data,  # Use form data, not JSON
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                )
+                
+                print(f"ABA Check Transaction Response: {response.status_code}")
+                print(f"ABA Check Transaction Body: {response.text}")
+                
+                response_data = response.json()
+                
+                # Store check response
+                if payment.gateway_response is None:
+                    payment.gateway_response = {}
+                payment.gateway_response["aba_check_response"] = response_data
+                payment.gateway_response["checked_at"] = datetime.now(timezone.utc).isoformat()
+                
+                # Parse response
+                status = response_data.get("status", {})
+                data = response_data.get("data", {})
+                
+                if status.get("code") == "00":
+                    # Successful response from ABA
+                    payment_status = data.get("payment_status", "").upper()
+                    
+                    if payment_status in ["APPROVED", "COMPLETED", "SUCCESS"]:
+                        # Payment verified as successful
+                        payment.status = "completed"
+                        payment.gateway_response["paid_at"] = datetime.now(timezone.utc).isoformat()
+                        payment.gateway_response["apv"] = data.get("apv")
+                        order.payment_status = OrderPaymentStatus.PAID.value
+                        
+                        AuditLogService.log_action(
+                            db=db,
+                            user_id=order.user_id,
+                            action="PAYMENT_VERIFIED",
+                            resource_type="Payment",
+                            resource_id=payment.id,
+                            details=f"Payment verified with ABA for order {order.order_number}"
+                        )
+                        
+                        db.commit()
+                        
+                        return {
+                            "status": "completed",
+                            "verified": True,
+                            "payment_status": payment_status,
+                            "order_id": order.id,
+                            "order_number": order.order_number,
+                            "amount": data.get("total_amount"),
+                            "transaction_id": transaction_id,
+                            "apv": data.get("apv")
+                        }
+                    
+                    elif payment_status == "PENDING":
+                        db.commit()
+                        return {
+                            "status": "pending",
+                            "verified": True,
+                            "payment_status": payment_status,
+                            "order_id": order.id,
+                            "message": "Payment is still processing"
+                        }
+                    
+                    else:
+                        # Payment failed
+                        payment.status = "failed"
+                        order.payment_status = OrderPaymentStatus.FAILED.value
+                        db.commit()
+                        
+                        return {
+                            "status": "failed",
+                            "verified": True,
+                            "payment_status": payment_status,
+                            "order_id": order.id,
+                            "message": f"Payment {payment_status.lower()}"
+                        }
+                else:
+                    # Error from ABA API
+                    error_msg = status.get("message", "Unknown error")
+                    db.commit()
+                    
+                    return {
+                        "status": "error",
+                        "verified": False,
+                        "order_id": order.id,
+                        "message": error_msg
+                    }
+                    
+        except httpx.RequestError as e:
+            print(f"ABA Check Transaction Error: {str(e)}")
+            return {
+                "status": "error",
+                "verified": False,
+                "order_id": order.id if order else None,
+                "message": f"Failed to verify with ABA: {str(e)}"
+            }
+
+
+    @staticmethod
     def verify_callback(
         db: Session,
         callback_data: ABAPayWayCallback
