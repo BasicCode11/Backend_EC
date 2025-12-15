@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 from decimal import Decimal
 from sqlalchemy.orm import Session
 import httpx
-
+from app.utils.generage_hast_pay import generate_aba_payway_hash
 from app.models.payment import Payment
 from app.models.order import Order, PaymentStatus as OrderPaymentStatus
 from app.schemas.payment import (
@@ -47,7 +47,7 @@ class ABAPayWayService:
     def _get_transaction_id(order_id: int) -> str:
         """Generate unique transaction ID for order"""
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        return f"ORD{order_id}_{timestamp}"
+        return f"ORD{order_id}-{timestamp}"
 
     @staticmethod
     def _format_amount(amount: Decimal) -> str:
@@ -73,21 +73,12 @@ class ABAPayWayService:
         
         # Format amount (2 decimal places)
         amount = ABAPayWayService._format_amount(order.total_amount)
+
         
-        # Prepare hash string (order matters!)
-        hash_string = (
-            f"{req_time}"
-            f"{settings.ABA_PAYWAY_MERCHANT_ID}"
-            f"{transaction_id}"
-            f"{amount}"
-        )
-        
-        # Create hash
-        hash_value = ABAPayWayService._create_hash(hash_string)
         
         # Prepare return URLs
         return_url = request_data.return_url or settings.ABA_PAYWAY_RETURN_URL
-        continue_url = request_data.continue_url or settings.ABA_PAYWAY_CONTINUE_URL
+        continue_success_url = request_data.continue_url or settings.ABA_PAYWAY_CONTINUE_URL
         cancel_url = request_data.cancel_url or settings.ABA_PAYWAY_CANCEL_URL
         
         # Prepare request payload
@@ -96,11 +87,10 @@ class ABAPayWayService:
             "merchant_id": settings.ABA_PAYWAY_MERCHANT_ID,
             "tran_id": transaction_id,
             "amount": amount,
-            "hash": hash_value,
             "return_url": return_url,
-            "continue_url": continue_url,
+            "continue_success_url": continue_success_url,
             "cancel_url": cancel_url,
-            "payment_option": "abapay",  # or "cards" for credit/debit cards
+            "payment_option": "abapay",  # Allow both cards and ABA app
             "currency": "USD",  # or "KHR" for Khmer Riel
             "items": json.dumps([{
                 "name": f"Order #{order.order_number}",
@@ -113,7 +103,7 @@ class ABAPayWayService:
             "email": order.user.email if order.user else "",
             "phone": order.user.phone if order.user else "",
         }
-        
+        payload['hash'] = generate_aba_payway_hash(payload , settings.ABA_PAYWAY_PUBLIC_KEY)
         # Create payment record
         payment = Payment(
             order_id=order.id,
@@ -125,7 +115,7 @@ class ABAPayWayService:
                 "req_time": req_time,
                 "merchant_id": settings.ABA_PAYWAY_MERCHANT_ID,
                 "return_url": return_url,
-                "continue_url": continue_url,
+                "continue_success_url": continue_success_url,
                 "cancel_url": cancel_url
             }
         )

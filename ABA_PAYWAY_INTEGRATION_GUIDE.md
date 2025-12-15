@@ -43,9 +43,9 @@ ZOD4OFfU32JuZxj5qzz9bnFmY5WGJWMlK/kzH/ITCw==
 -----END RSA PRIVATE KEY-----"
 
 # Return URLs (change these to your frontend URLs)
-ABA_PAYWAY_RETURN_URL=http://localhost:3000/payment/callback
-ABA_PAYWAY_CONTINUE_URL=http://localhost:3000/payment/success
-ABA_PAYWAY_CANCEL_URL=http://localhost:3000/payment/cancel
+ABA_PAYWAY_RETURN_URL=http://localhost:5173/payment/callback
+ABA_PAYWAY_CONTINUE_URL=http://localhost:5173/payment/success
+ABA_PAYWAY_CANCEL_URL=http://localhost:5173/payment/cancel
 ```
 
 ### 2. Install Dependencies

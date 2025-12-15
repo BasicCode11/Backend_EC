@@ -86,7 +86,7 @@ class OrderService:
                 order_number=OrderService._generate_order_number(),
                 user_id=current_user.id,
                 status=OrderStatus.PROCESSING.value,
-                payment_status=PaymentStatus.PAID.value, # Assuming payment is successful
+                payment_status=PaymentStatus.PENDING.value, # Assuming payment is successful
                 subtotal=subtotal,
                 tax_amount=tax_amount,
                 shipping_amount=shipping_amount,
