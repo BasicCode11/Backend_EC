@@ -205,3 +205,43 @@ class EmailService:
             template_name="password_changed",
             content=content
         )
+
+    @staticmethod
+    def send_order_confirmation_email(
+        db: Session,
+        order
+    ) -> EmailNotification:
+        """Send order confirmation email"""
+        
+        items_list = "\n".join(
+            f"- {item.product_name} (x{item.quantity}): ${item.total_price:.2f}"
+            for item in order.items
+        )
+        
+        content = f"""
+        Dear {order.user.first_name},
+
+        Thank you for your order! Your payment has been successful.
+        Order Status:{order.status}
+        Payment Status: {order.payment_status}
+        Order Number: {order.order_number}
+        Total Amount: ${order.total_amount:.2f}
+
+        Items:
+        {items_list}
+
+        We've received your order and will process it shortly.
+
+        Thank you for shopping with us!
+
+        Best regards,
+        Your E-commerce Team
+        """
+        
+        return EmailService.send_email(
+            db=db,
+            recipient_email=order.user.email,
+            subject=f"Order Confirmation #{order.order_number}",
+            template_name="order_confirmation",
+            content=content
+        )

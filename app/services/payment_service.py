@@ -19,6 +19,8 @@ from app.schemas.payment import (
 from app.core.config import settings
 from app.core.exceptions import ValidationError, NotFoundError
 from app.services.audit_log_service import AuditLogService
+from app.services.email_service import EmailService
+from app.services.telegram_service import TelegramService
 
 # Note: RSA encryption is available if needed via pycryptodome
 # from Crypto.PublicKey import RSA
@@ -233,6 +235,9 @@ class ABAPayWayService:
                         payment.gateway_response["apv"] = data.get("apv")
                         order.payment_status = OrderPaymentStatus.PAID.value
                         
+                        # Send notifications
+                        EmailService.send_order_confirmation_email(db, order)
+                        TelegramService.send_new_order_alert(order)
                         
                         db.commit()
                         

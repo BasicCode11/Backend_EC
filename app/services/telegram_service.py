@@ -331,6 +331,39 @@ class TelegramService:
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     @staticmethod
+    def format_new_order_alert(order) -> str:
+        """Format a new order alert message."""
+        items_list = "\n".join(
+            f"  - {item.product_name} (x{item.quantity}) - ${item.total_price:.2f}"
+            for item in order.items
+        )
+
+        message = f"""
+        🛍️ <b>New Order Received!</b> 🛍️
+        <b>Order Status:</b> {order.status}
+        <b>Payment Status:</b> {order.payment_status}
+        <b>Order Number:</b> {order.order_number}
+        <b>Customer:</b> {order.user.first_name} {order.user.last_name}
+        <b>Total Amount:</b> ${order.total_amount:.2f}
+
+        <b>Items:</b>
+        {items_list}
+
+        🕐 <b>Order Time:</b> {order.created_at.strftime('%Y-%m-%d %H:%M:%S')}
+        """
+        return message
+
+    @staticmethod
+    def send_new_order_alert(order):
+        """Send a new order alert to Telegram."""
+        if not TelegramService.is_configured():
+            logger.warning("Skipping new order alert: Telegram not configured.")
+            return
+
+        message = TelegramService.format_new_order_alert(order)
+        TelegramService.send_message(message, parse_mode="HTML")
+
+    @staticmethod
     def test_connection() -> Dict[str, Any]:
         """
         Test Telegram bot connection by sending a test message.
