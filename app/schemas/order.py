@@ -74,16 +74,25 @@ class OrderCreate(OrderBase):
 
 class OrderUpdate(BaseModel):
     status: Optional[OrderStatus] = None
-    payment_status: Optional[PaymentStatus] = None
     shipping_address_id: Optional[int] = None
     billing_address_id: Optional[int] = None
     notes: Optional[str] = None
+
+class UserOut(BaseModel):
+    email: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class OrderResponse(BaseModel):
     id: int
     order_number: str
     user_id: int
+    user: UserOut
     status: str
     subtotal: Decimal
     tax_amount: Decimal

@@ -8,9 +8,9 @@ from math import ceil
 from app.database import get_db
 from app.models.user import User
 from app.models.email_notification import EmailNotification, EmailStatus
-from app.deps.auth import require_permission
+from app.deps.auth import require_permission , get_current_active_user
 from pydantic import BaseModel
-
+from app.services.email_service import EmailService
 router = APIRouter()
 
 
@@ -57,7 +57,7 @@ def get_email_logs(
     template: Optional[str] = None,
     recipient: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["admin:emails"]))
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     **Get email notification logs (Admin only)**
@@ -138,7 +138,7 @@ def get_email_details(
 @router.get("/admin/emails/stats/summary", response_model=EmailStatsResponse)
 def get_email_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["admin:emails"]))
+    current_user: User = Depends(require_permission(["email:read"]))
 ):
     """
     **Get email statistics (Admin only)**
@@ -261,7 +261,7 @@ def resend_failed_email(
 @router.get("/admin/emails/templates/list")
 def get_email_templates(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["admin:emails"]))
+    current_user: User = Depends(require_permission(["email:read"]))
 ):
     """
     **Get list of email templates used (Admin only)**
@@ -328,7 +328,7 @@ def delete_email_log(
 def cleanup_old_emails(
     days: int = Query(90, ge=1, description="Delete emails older than this many days"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(["admin:emails"]))
+    current_user: User = Depends(require_permission(["email:create"]))
 ):
     """
     **Cleanup old email logs (Admin only)**
@@ -356,3 +356,22 @@ def cleanup_old_emails(
         "deleted_count": deleted_count,
         "cutoff_date": cutoff_date.isoformat()
     }
+
+
+@router.post("customer/contactup")
+def contachus(
+    full_name: str,
+    email_address: str,
+    message: str,
+    subject: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    return EmailService.send_email_contactus(
+        db=db,
+        currenct_user=current_user,
+        full_name=full_name,
+        email_address=email_address,
+        message=message,
+        subject=subject
+    )

@@ -184,7 +184,8 @@ class OrderService:
     ) -> Tuple[List[Order], int]:
         """Get all orders with optional filters"""
         query = select(Order).options(
-            selectinload(Order.items)
+            selectinload(Order.items),
+            selectinload(Order.user)
         )
 
         if user_id:
@@ -214,7 +215,8 @@ class OrderService:
     def get_by_order_number(db: Session, order_number: str) -> Optional[Order]:
         """Get order by order number"""
         return db.query(Order).options(
-            selectinload(Order.items)
+            selectinload(Order.items),
+            selectinload(Order.user)
         ).filter(Order.order_number == order_number).first()
 
     @staticmethod
@@ -233,7 +235,6 @@ class OrderService:
 
         old_values = {
             "status": order.status,
-            "payment_status": order.payment_status
         }
 
         # Update fields
@@ -248,7 +249,6 @@ class OrderService:
 
         new_values = {
             "status": order.status,
-            "payment_status": order.payment_status
         }
 
         AuditLogService.log_update(

@@ -7,6 +7,7 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from app.models.user import User
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
@@ -243,5 +244,41 @@ class EmailService:
             recipient_email=order.user.email,
             subject=f"Order Confirmation #{order.order_number}",
             template_name="order_confirmation",
+            content=content
+        )
+
+    @staticmethod
+    def send_email_contactus(
+        db: Session,
+        currenct_user: User,
+        full_name: str,
+        email_address: str,
+        message: str,
+        subject: Optional[str] = None,
+        
+    ) -> EmailNotification:
+        """Send order confirmation email"""
+        
+    
+        content = f"""
+        Dear {full_name},
+        Current use message {currenct_user.email}
+        from email {email_address}
+
+        Thank you for contact us! Your messagess has been successful.
+        Subject {subject}
+
+        message = {message}
+
+        Thank you for shopping with us!
+
+        Best regards,
+        Your E-commerce Team
+        """
+        return EmailService.send_email(
+            db=db,
+            recipient_email=f"maem74557@gmail.com",
+            subject=subject,
+            template_name="Send us a Message",
             content=content
         )

@@ -141,6 +141,11 @@ class DataFactory:
             {"name": "customer:create"},
             {"name": "customer:update"},
             {"name": "customer:delete"},
+
+            {"name": "email:read"},
+            {"name": "email:create"},
+            {"name": "email:update"},
+            {"name": "email:delete"},
         ]
 
     @staticmethod
@@ -262,6 +267,11 @@ class DataFactory:
                     {"name": "customer:create"},
                     {"name": "customer:update"},
                     {"name": "customer:delete"},
+                    
+                    {"name": "email:read"},
+                    {"name": "email:create"},
+                    {"name": "email:update"},
+                    {"name": "email:delete"},
                 ],
             },
             {

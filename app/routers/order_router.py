@@ -15,6 +15,7 @@ from app.schemas.order import (
     OrderStatus as OrderStatusEnum,
     PaymentStatus as PaymentStatusEnum
 )
+from app.services.user_service import UserService
 from app.services.order_service import OrderService
 from app.deps.auth import get_current_active_user, require_permission
 from app.core.exceptions import ValidationError, NotFoundError
@@ -69,26 +70,7 @@ def checkout(
         # Reload with items for response
         order = OrderService.get_by_id(db, order.id)
         
-        # Build response manually to avoid duplicate 'items' parameter
-        return OrderWithDetails(
-            id=order.id,
-            order_number=order.order_number,
-            user_id=order.user_id,
-            status=order.status,
-            subtotal=order.subtotal,
-            tax_amount=order.tax_amount,
-            shipping_amount=order.shipping_amount,
-            discount_amount=order.discount_amount,
-            total_amount=order.total_amount,
-            payment_status=order.payment_status,
-            shipping_address_id=order.shipping_address_id,
-            billing_address_id=order.billing_address_id,
-            notes=order.notes,
-            created_at=order.created_at,
-            updated_at=order.updated_at,
-            items=[item for item in order.items],
-            total_items=order.total_items
-        )
+        return OrderWithDetails.model_validate(order)
     
     except ValidationError as e:
         raise HTTPException(
@@ -221,25 +203,7 @@ def get_order(
             detail="You can only view your own orders"
         )
     
-    return OrderWithDetails(
-        id=order.id,
-        order_number=order.order_number,
-        user_id=order.user_id,
-        status=order.status,
-        subtotal=order.subtotal,
-        tax_amount=order.tax_amount,
-        shipping_amount=order.shipping_amount,
-        discount_amount=order.discount_amount,
-        total_amount=order.total_amount,
-        payment_status=order.payment_status,
-        shipping_address_id=order.shipping_address_id,
-        billing_address_id=order.billing_address_id,
-        notes=order.notes,
-        created_at=order.created_at,
-        updated_at=order.updated_at,
-        items=[item for item in order.items],
-        total_items=order.total_items
-    )
+    return OrderWithDetails.model_validate(order)
 
 
 @router.put("/orders/{order_id}", response_model=OrderResponse)
@@ -257,7 +221,6 @@ def update_order(
     
     Can update:
     - status
-    - payment_status
     - shipping_address_id
     - billing_address_id
     - notes
