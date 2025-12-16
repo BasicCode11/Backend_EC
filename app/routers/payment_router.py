@@ -166,29 +166,6 @@ def check_transaction_with_aba(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """
-    **Check Transaction Status with ABA PayWay API**
-    
-    This is the MANDATORY Check Transaction API that verifies payment status 
-    directly with ABA's servers.
-    
-    **When to use:**
-    1️⃣ After callback to confirm payment status is successful
-    2️⃣ If callback doesn't push to your side (network issues, etc.)
-    3️⃣ Poll every 3-5 seconds after user initiates payment
-    
-    **Recommended polling strategy:**
-    - Start polling 20 seconds after payment initiation
-    - Poll every 3-5 seconds
-    - Stop after 3-5 minutes (QR expires)
-    - If payment is completed/successful, stop polling
-    
-    **Response status values:**
-    - "completed": Payment successful ✅
-    - "pending": Still waiting for payment ⏳
-    - "failed": Payment failed or cancelled ❌
-    - "error": Could not verify with ABA ⚠️
-    """
     try:
         # Verify order belongs to user
         order = OrderService.get_by_id(db, verify_data.order_id)

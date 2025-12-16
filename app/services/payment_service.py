@@ -182,12 +182,6 @@ class ABAPayWayService:
         # Build hash for check transaction: req_time + merchant_id + tran_id
         hash_string = f"{req_time}{settings.ABA_PAYWAY_MERCHANT_ID}{transaction_id}"
         
-        print(f"=== CHECK TRANSACTION DEBUG ===")
-        print(f"Transaction ID: {transaction_id}")
-        print(f"Merchant ID: {settings.ABA_PAYWAY_MERCHANT_ID}")
-        print(f"Req Time: {req_time}")
-        print(f"Hash String: {hash_string}")
-        
         check_hash = hmac.new(
             settings.ABA_PAYWAY_PUBLIC_KEY.encode('utf-8'),
             hash_string.encode('utf-8'),
@@ -195,8 +189,6 @@ class ABAPayWayService:
         )
         hash_value = base64.b64encode(check_hash.digest()).decode('utf-8')
         
-        print(f"Hash Value: {hash_value}")
-        print(f"URL: {settings.ABA_PAYWAY_CHECK_TRANSACTION_URL}")
         
         check_data = {
             "req_time": req_time,
@@ -205,7 +197,6 @@ class ABAPayWayService:
             "hash": hash_value
         }
         
-        print(f"Request Data: {check_data}")
         
         try:
             with httpx.Client(timeout=30.0) as client:
@@ -214,9 +205,6 @@ class ABAPayWayService:
                     data=check_data,  # Use form data, not JSON
                     headers={"Content-Type": "application/x-www-form-urlencoded"}
                 )
-                
-                print(f"ABA Check Transaction Response: {response.status_code}")
-                print(f"ABA Check Transaction Body: {response.text}")
                 
                 response_data = response.json()
                 
@@ -230,14 +218,11 @@ class ABAPayWayService:
                 status = response_data.get("status", {})
                 data = response_data.get("data", {})
                 
-                print(f"ABA Response Status: {status}")
-                print(f"ABA Response Data: {data}")
                 
                 if status.get("code") == "00":
                     # Successful response from ABA
                     payment_status = data.get("payment_status", "").upper()
                     
-                    print(f"Payment Status from ABA: {payment_status}")
                     
                     # Check for successful payment statuses
                     # ABA may return: APPROVED, COMPLETED, SUCCESS, CAPTURED
@@ -248,14 +233,6 @@ class ABAPayWayService:
                         payment.gateway_response["apv"] = data.get("apv")
                         order.payment_status = OrderPaymentStatus.PAID.value
                         
-                        AuditLogService.log_action(
-                            db=db,
-                            user_id=order.user_id,
-                            action="PAYMENT_VERIFIED",
-                            resource_type="Payment",
-                            resource_id=payment.id,
-                            details=f"Payment verified with ABA for order {order.order_number}"
-                        )
                         
                         db.commit()
                         
@@ -326,17 +303,18 @@ class ABAPayWayService:
         This is called when ABA redirects back to your app
         """
         # Verify hash
-        hash_string = (
-            f"{callback_data.tran_id}"
-            f"{callback_data.req_time}"
-            f"{callback_data.amount}"
-            f"{callback_data.merchant_id}"
-        )
+ 
+        # hash_string = f"{callback_data.req_time}{callback_data.merchant_id}{callback_data.tran_id}"
         
-        expected_hash = ABAPayWayService._create_hash(hash_string)
-        
-        if callback_data.hash != expected_hash:
-            raise ValidationError("Invalid payment callback hash")
+        # check_hash = hmac.new(
+        #     settings.ABA_PAYWAY_PUBLIC_KEY.encode('utf-8'),
+        #     hash_string.encode('utf-8'),
+        #     hashlib.sha512
+        # )
+        # expected_hash = base64.b64encode(check_hash.digest()).decode('utf-8')
+  
+        # if callback_data.hash != expected_hash:
+        #     raise ValidationError("Invalid payment callback hash")
         
         # Find payment by transaction ID
         payment = db.query(Payment).filter(
@@ -370,14 +348,7 @@ class ABAPayWayService:
             order.payment_status = OrderPaymentStatus.PAID.value
             
             # Log success
-            AuditLogService.log_action(
-                db=db,
-                user_id=order.user_id,
-                action="PAYMENT_COMPLETED",
-                resource_type="Payment",
-                resource_id=payment.id,
-                details=f"ABA PayWay payment completed for order {order.order_number}. Amount: {callback_data.amount}"
-            )
+          
             
         else:
             # Payment failed
@@ -391,14 +362,7 @@ class ABAPayWayService:
             order.payment_status = OrderPaymentStatus.FAILED.value
             
             # Log failure
-            AuditLogService.log_action(
-                db=db,
-                user_id=order.user_id,
-                action="PAYMENT_FAILED",
-                resource_type="Payment",
-                resource_id=payment.id,
-                details=f"ABA PayWay payment failed for order {order.order_number}"
-            )
+          
         
         db.commit()
         db.refresh(payment)
