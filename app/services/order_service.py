@@ -23,6 +23,9 @@ from app.core.exceptions import ValidationError, NotFoundError
 from app.services.audit_log_service import AuditLogService
 from app.services.inventory_service import InventoryService
 from app.services.stock_validation_service import StockValidationService
+from app.services import discount_service
+from app.models.discount import Discount
+from app.models.discount_application import DiscountApplication
 
 
 class OrderService:
@@ -44,7 +47,7 @@ class OrderService:
         user_agent: Optional[str] = None
     ) -> Order:
         """
-        Create order from user's cart, validate stock, and create order items.
+        Create order from user's cart, validate stock, apply discount, and create order items.
         This process is done within a single transaction to ensure data integrity.
         """
         # 1. Get user's cart
@@ -73,20 +76,35 @@ class OrderService:
                     f"Available: {total_available_stock}, Requested: {item.quantity}"
                 )
 
-        # 3. Create the Order
+        # 3. Handle Discount
+        subtotal = cart.total_amount
+        discount_amount = 0.0
+        applied_discount: Optional[Discount] = None
+
+        if checkout_data.discount_code:
+            try:
+                applied_discount = discount_service.validate_and_get_discount(
+                    db=db,
+                    discount_name=checkout_data.discount_code,
+                    order_amount=subtotal
+                )
+                discount_amount = applied_discount.calculate_discount_amount(subtotal)
+            except (NotFoundError, ValidationError) as e:
+                raise ValidationError(str(e))
+
+
+        # 4. Create the Order
         try:
             # Calculate totals
-            subtotal = cart.total_amount
             tax_amount = 0.0  # Placeholder
             shipping_amount = 0.0  # Placeholder
-            discount_amount = 0.0  # Placeholder
             total_amount = subtotal + tax_amount + shipping_amount - discount_amount
 
             order = Order(
                 order_number=OrderService._generate_order_number(),
                 user_id=current_user.id,
                 status=OrderStatus.PROCESSING.value,
-                payment_status=PaymentStatus.PENDING.value, # Assuming payment is successful
+                payment_status=PaymentStatus.PENDING.value,
                 subtotal=subtotal,
                 tax_amount=tax_amount,
                 shipping_amount=shipping_amount,
@@ -98,10 +116,19 @@ class OrderService:
             )
             db.add(order)
             db.flush()
+            
+            # Create Discount Application if discount was applied
+            if applied_discount:
+                discount_application = DiscountApplication(
+                    discount_id=applied_discount.id,
+                    order_id=order.id,
+                    user_id=current_user.id,
+                    discount_amount=discount_amount
+                )
+                db.add(discount_application)
 
-            # 4. Create OrderItems and reduce stock
+            # 5. Create OrderItems and reduce stock
             for item in cart.items:
-                # Create OrderItem, freezing the data
                 variant_attrs = {
                     "color": item.variant.color,
                     "size": item.variant.size,
@@ -113,7 +140,7 @@ class OrderService:
                     product_id=item.product_id,
                     variant_id=item.variant_id,
                     product_name=item.product.name,
-                    product_sku=item.variant.sku if item.variant else item.product.sku, # Assuming product might have a base SKU
+                    product_sku=item.variant.sku if item.variant else item.product.sku,
                     variant_attributes=variant_attrs,
                     quantity=item.quantity,
                     unit_price=item.price,
@@ -121,12 +148,11 @@ class OrderService:
                 )
                 db.add(order_item)
                 
-                # Reduce stock from inventory records for this variant
                 quantity_to_reduce = item.quantity
                 inventories = db.query(Inventory).filter(
                     Inventory.variant_id == item.variant_id,
                     Inventory.available_quantity > 0
-                ).order_by(Inventory.created_at).all() # FIFO
+                ).order_by(Inventory.created_at).all()
 
                 for inv in inventories:
                     if quantity_to_reduce == 0:
@@ -136,10 +162,14 @@ class OrderService:
                     inv.stock_quantity -= reducible
                     quantity_to_reduce -= reducible
             
-            # 5. Clear the cart
+            # 6. Increment discount usage
+            if applied_discount:
+                discount_service.increment_discount_usage(db, discount=applied_discount)
+
+            # 7. Clear the cart
             db.query(CartItem).filter(CartItem.cart_id == cart.id).delete()
             
-            # 6. Log and Commit
+            # 8. Log and Commit
             AuditLogService.log_create(
                 db=db,
                 user_id=current_user.id,
@@ -149,6 +179,8 @@ class OrderService:
                     "order_number": order.order_number,
                     "total_amount": float(order.total_amount),
                     "status": order.status,
+                    "discount_code": checkout_data.discount_code,
+                    "discount_amount": float(discount_amount)
                 },
                 ip_address=ip_address,
                 user_agent=user_agent

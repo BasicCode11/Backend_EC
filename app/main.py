@@ -29,6 +29,7 @@ from .routers.review_router import router as review_router
 from .routers.wishlist_router import router as wishlist_router
 from .routers.variant_router import router as variant_router
 from .routers.email_router import router as email_router
+from .routers.discount_router import router as discount_router
 from app.services.inventory_alert_service import InventoryAlertService
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -78,6 +79,8 @@ app.include_router(payment_router, prefix="/api", tags=["Payments"])
 app.include_router(review_router, prefix="/api", tags=["Reviews"])
 app.include_router(wishlist_router, prefix="/api", tags=["Wishlist"])
 app.include_router(email_router,prefix="/api", tags=["Email"])
+app.include_router(discount_router, prefix="/api", tags=["Discounts"])
+
 @app.get("/", tags=["health"])
 def health():
     return {"status": "ok"}
