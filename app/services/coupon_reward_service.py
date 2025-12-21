@@ -177,12 +177,10 @@ class CouponRewardService:
         triggered_by_order: Optional[Order] = None
     ) -> UserCoupon:
         """Generate a unique coupon code for a user based on a rule."""
-        # Generate unique code
-        code = UserCoupon.generate_coupon_code(prefix="REWARD")
-        
-        # Make sure code is unique
+        # Generate unique code with loop to ensure uniqueness
+        code = UserCoupon.generate_coupon_code(prefix="PROMO", length=5)
         while db.query(UserCoupon).filter(UserCoupon.code == code).first():
-            code = UserCoupon.generate_coupon_code(prefix="REWARD")
+            code = UserCoupon.generate_coupon_code(prefix="PROMO", length=5)
         
         # Calculate validity period
         valid_from = datetime.now(timezone.utc)
@@ -413,24 +411,27 @@ class CouponRewardService:
         usage_limit: Optional[int]
     ) -> UserCoupon:
         """Create a public promo code that any user can use."""
-        # Auto-generate code if not provided
+        # Auto-generate code with loop to ensure uniqueness
         code = UserCoupon.generate_coupon_code(prefix="PROMO", length=5)
-        # Check if code already exists
-        existing = db.query(UserCoupon).filter(UserCoupon.code == code).first()
-        if existing:
+        while db.query(UserCoupon).filter(UserCoupon.code == code).first():
             code = UserCoupon.generate_coupon_code(prefix="PROMO", length=5)
         
         now = datetime.now(timezone.utc)
-        if valid_from and now < valid_from:
+        
+        # Check if already expired
+        if valid_until and valid_until.replace(tzinfo=timezone.utc if valid_until.tzinfo is None else valid_until.tzinfo) < now:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Coupon is not valid yet"
+                detail="Coupon valid_until date cannot be in the past"
             )
-        if valid_until and now > valid_until:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Coupon has expired"
-            )
+
+        # Handle valid_from - default to now if not provided
+        if valid_from:
+            valid_from_utc = valid_from.astimezone(timezone.utc) if valid_from.tzinfo else valid_from.replace(tzinfo=timezone.utc)
+        else:
+            valid_from_utc = now
+            
+        valid_until_utc = valid_until.astimezone(timezone.utc) if valid_until.tzinfo else valid_until.replace(tzinfo=timezone.utc)
 
         coupon = UserCoupon(
             code=code,
@@ -441,8 +442,8 @@ class CouponRewardService:
             discount_value=discount_value,
             minimum_order_amount=minimum_order_amount,
             maximum_discount_amount=maximum_discount_amount,
-            valid_from=valid_from.astimezone(timezone.utc),
-            valid_until=valid_until.astimezone(timezone.utc),
+            valid_from=valid_from_utc,
+            valid_until=valid_until_utc,
             usage_limit=usage_limit,
             usage_count=0,
             is_public=True,
