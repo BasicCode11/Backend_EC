@@ -146,6 +146,11 @@ class DataFactory:
             {"name": "email:create"},
             {"name": "email:update"},
             {"name": "email:delete"},
+
+            {"name": "banners:create"},
+            {"name": "banners:read"},
+            {"name": "banners:update"},
+            {"name": "banners:delete"},
         ]
 
     @staticmethod

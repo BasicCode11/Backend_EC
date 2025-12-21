@@ -11,8 +11,6 @@ from app.core.config import settings
 from app.core.exceptions import (
     ForbiddenException,
     InvalidTokenException,
-    TeamAccessDeniedException,
-    AgentAccessDeniedException,
 )
 from app.services.auth_service import AuthService
 from app.services.token_blacklist_service import TokenBlacklistService

@@ -72,39 +72,6 @@ class PermissionDeniedException(BaseAPIException):
         )
 
 
-class SuperAdminRequiredException(BaseAPIException):
-    """Raised when an endpoint requires Super Admin access."""
-
-    def __init__(self, detail: str = "Super Admin access required"):
-        super().__init__(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=detail,
-            error_code="SUPER_ADMIN_REQUIRED",
-        )
-
-
-class TeamAccessDeniedException(BaseAPIException):
-    """Raised when a user cannot access a team."""
-
-    def __init__(self, detail: str = "You cannot access this team"):
-        super().__init__(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=detail,
-            error_code="TEAM_ACCESS_DENIED",
-        )
-
-
-class AgentAccessDeniedException(BaseAPIException):
-    """Raised when a user cannot access an agent."""
-
-    def __init__(self, detail: str = "You cannot access this agent"):
-        super().__init__(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=detail,
-            error_code="AGENT_ACCESS_DENIED",
-        )
-
-
 # -------------------------------
 # Utility Exceptions
 # -------------------------------

@@ -20,3 +20,24 @@
 
   I resolved critical bugs preventing checkout, including incorrect stock checking and reduction, and an order creation
   crash. The system is now consistent and functional.
+
+
+  ┌────────────────────────────────────────────────────────────────┐
+│                    AUTOMATIC COUPON EMAIL                       │
+├────────────────────────────────────────────────────────────────┤
+│                                                                │
+│  1️⃣ Customer places order ($150)                                │
+│         ↓                                                       │
+│  2️⃣ Order is created successfully                               │
+│         ↓                                                       │
+│  3️⃣ System calls: evaluate_order_and_generate_coupons()        │
+│         ↓                                                       │
+│  4️⃣ Checks reward rules (e.g., "Spend $100 → Get coupon")      │
+│         ↓                                                       │
+│  5️⃣ Rule matches? → Generate coupon (REWARD-A1B2C3D4)          │
+│         ↓                                                       │
+│  6️⃣ System calls: send_coupon_email()                          │
+│         ↓                                                       │
+│  7️⃣ Email sent to customer with coupon code! 📩                │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘

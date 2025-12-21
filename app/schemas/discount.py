@@ -76,3 +76,9 @@ class DiscountResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class DiscountListResponse(BaseModel):
+    discounts: list[DiscountResponse]
+    total: int
+    skip: int
+    limit: int

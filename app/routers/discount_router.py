@@ -1,26 +1,20 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, Depends, Request, status , Query
 from sqlalchemy.orm import Session
-
+    
 from app.database import get_db
-from app.schemas.discount import DiscountCreate, DiscountUpdate, DiscountResponse
-from app.services import discount_service
-from app.deps.permission import check_permissions
+from app.schemas.discount import DiscountCreate, DiscountUpdate, DiscountResponse , DiscountListResponse
+from app.services.discount_service import DiscountService
+from app.deps.auth import require_permission
 from app.models.user import User
-
 router = APIRouter()
 
-@router.post(
-    "/", 
-    response_model=DiscountResponse, 
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(check_permissions(["discount:create"]))],
-    summary="Create a new discount",
-    tags=["Discounts"]
-)
+@router.post("/discounts", response_model=DiscountResponse, status_code=status.HTTP_201_CREATED)
 def create_discount(
+    request: Request,
     discount: DiscountCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(["discounts:create"]))
 ):
     """
     Create a new discount with the specified details.
@@ -28,62 +22,40 @@ def create_discount(
     Permissions:
     - Requires `discount:create`
     """
-    return discount_service.create_discount(db=db, discount=discount)
+    ip_address = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.headers.get("X-Real-IP", "") or (request.client.host if request.client else None)
+    user_agent = request.headers.get("User-Agent")
+    return DiscountService.create_discount(db=db, discount=discount , created_by=current_user , ip_address=ip_address , user_agent=user_agent)
 
-@router.get(
-    "/", 
-    response_model=List[DiscountResponse],
-    dependencies=[Depends(check_permissions(["discount:read"]))],
-    summary="Get all discounts",
-    tags=["Discounts"]
-)
+@router.get("/discounts", response_model=DiscountListResponse,dependencies=[Depends(require_permission(["discounts:read"]))],)
 def read_discounts(
-    skip: int = 0, 
-    limit: int = 100, 
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1),
+    status: Optional[bool] = Query(None, description="Filter by active status"),
+    search: Optional[str] = Query(None, description="Search by discount name"),
     db: Session = Depends(get_db)
 ):
-    """
-    Retrieve a list of all discounts.
-    
-    Permissions:
-    - Requires `discount:read`
-    """
-    discounts = discount_service.get_discounts(db, skip=skip, limit=limit)
-    return discounts
 
-@router.get(
-    "/{discount_id}", 
-    response_model=DiscountResponse,
-    dependencies=[Depends(check_permissions(["discount:read"]))],
-    summary="Get a specific discount",
-    tags=["Discounts"]
-)
+    discounts , total = DiscountService.get_discounts(db, skip=skip, limit=limit , is_active=status, search=search)
+    return {
+        "discounts": discounts,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
+
+@router.get("/discounts/{discount_id}", response_model=DiscountResponse,dependencies=[Depends(require_permission(["discounts:read"]))])
 def read_discount(
     discount_id: int, 
     db: Session = Depends(get_db)
 ):
-    """
-    Retrieve a specific discount by its ID.
-    
-    Permissions:
-    - Requires `discount:read`
-    """
-    db_discount = discount_service.get_discount(db, discount_id=discount_id)
-    if db_discount is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Discount not found")
-    return db_discount
+    return DiscountService.get_discount_byid(db, discount_id=discount_id)
 
-@router.put(
-    "/{discount_id}", 
-    response_model=DiscountResponse,
-    dependencies=[Depends(check_permissions(["discount:update"]))],
-    summary="Update a discount",
-    tags=["Discounts"]
-)
+@router.put("/discounts/{discount_id}", response_model=DiscountResponse)
 def update_discount(
     discount_id: int, 
     discount: DiscountUpdate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(["discounts:update"]))
 ):
     """
     Update an existing discount's details.
@@ -91,29 +63,13 @@ def update_discount(
     Permissions:
     - Requires `discount:update`
     """
-    db_discount = discount_service.update_discount(db, discount_id=discount_id, discount_update=discount)
-    if db_discount is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Discount not found")
-    return db_discount
+    return DiscountService.update_discount(db, discount_id=discount_id, discount_update=discount)
+   
 
-@router.delete(
-    "/{discount_id}", 
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(check_permissions(["discount:delete"]))],
-    summary="Delete a discount",
-    tags=["Discounts"]
-)
+@router.delete("/discounts/{discount_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_discount(
     discount_id: int, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(["discounts:delete"]))
 ):
-    """
-    Delete a discount from the system.
-    
-    Permissions:
-    - Requires `discount:delete`
-    """
-    success = discount_service.delete_discount(db, discount_id=discount_id)
-    if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Discount not found")
-    return {"ok": True}
+   return DiscountService.delete_discount(db, discount_id=discount_id, deleted_by=current_user)

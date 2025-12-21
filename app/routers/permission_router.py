@@ -17,3 +17,13 @@ def list_permissions(
     permissions = PermissionService.get_all(db)
     print(f"Permissions: {permissions}")
     return permissions
+
+@router.post("/permissions", response_model=PermissionOut, status_code=status.HTTP_201_CREATED)
+def create_permission(
+    name: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(check_permissions(["permissions:create"])),
+) -> PermissionOut:
+    """Create a new permission. Requires permissions:create permission."""
+    permission = PermissionService.create(db, name=name)
+    return permission

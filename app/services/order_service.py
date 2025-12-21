@@ -23,9 +23,9 @@ from app.core.exceptions import ValidationError, NotFoundError
 from app.services.audit_log_service import AuditLogService
 from app.services.inventory_service import InventoryService
 from app.services.stock_validation_service import StockValidationService
-from app.services import discount_service
-from app.models.discount import Discount
-from app.models.discount_application import DiscountApplication
+from app.services.coupon_reward_service import CouponRewardService
+from app.models.user_coupon import UserCoupon
+
 
 
 class OrderService:
@@ -76,21 +76,22 @@ class OrderService:
                     f"Available: {total_available_stock}, Requested: {item.quantity}"
                 )
 
-        # 3. Handle Discount
+        # 3. Handle Coupon
         subtotal = cart.total_amount
         discount_amount = 0.0
-        applied_discount: Optional[Discount] = None
+        applied_coupon: Optional[UserCoupon] = None
 
-        if checkout_data.discount_code:
+        if checkout_data.coupon_code:
             try:
-                applied_discount = discount_service.validate_and_get_discount(
+                applied_coupon = CouponRewardService.validate_coupon(
                     db=db,
-                    discount_name=checkout_data.discount_code,
-                    order_amount=subtotal
+                    coupon_code=checkout_data.coupon_code,
+                    user_id=current_user.id,
+                    order_amount=float(subtotal)
                 )
-                discount_amount = applied_discount.calculate_discount_amount(subtotal)
-            except (NotFoundError, ValidationError) as e:
-                raise ValidationError(str(e))
+                discount_amount = applied_coupon.calculate_discount_amount(float(subtotal))
+            except Exception as e:
+                raise ValidationError(str(e.detail) if hasattr(e, 'detail') else str(e))
 
 
         # 4. Create the Order
@@ -116,16 +117,6 @@ class OrderService:
             )
             db.add(order)
             db.flush()
-            
-            # Create Discount Application if discount was applied
-            if applied_discount:
-                discount_application = DiscountApplication(
-                    discount_id=applied_discount.id,
-                    order_id=order.id,
-                    user_id=current_user.id,
-                    discount_amount=discount_amount
-                )
-                db.add(discount_application)
 
             # 5. Create OrderItems and reduce stock
             for item in cart.items:
@@ -162,9 +153,14 @@ class OrderService:
                     inv.stock_quantity -= reducible
                     quantity_to_reduce -= reducible
             
-            # 6. Increment discount usage
-            if applied_discount:
-                discount_service.increment_discount_usage(db, discount=applied_discount)
+            # 6. Mark coupon as used
+            if applied_coupon:
+                CouponRewardService.mark_coupon_as_used(
+                    db=db,
+                    coupon=applied_coupon,
+                    order_id=order.id,
+                    user_id=current_user.id
+                )
 
             # 7. Clear the cart
             db.query(CartItem).filter(CartItem.cart_id == cart.id).delete()
@@ -179,7 +175,7 @@ class OrderService:
                     "order_number": order.order_number,
                     "total_amount": float(order.total_amount),
                     "status": order.status,
-                    "discount_code": checkout_data.discount_code,
+                    "coupon_code": checkout_data.coupon_code,
                     "discount_amount": float(discount_amount)
                 },
                 ip_address=ip_address,
@@ -188,6 +184,22 @@ class OrderService:
             
             db.commit()
             db.refresh(order)
+            
+            # 9. Evaluate order for coupon rewards and send email notifications
+            try:
+                generated_coupons = CouponRewardService.evaluate_order_and_generate_coupons(
+                    db=db,
+                    order=order,
+                    user=current_user
+                )
+                # Send email for each generated coupon
+                for coupon in generated_coupons:
+                    CouponRewardService.send_coupon_email(db=db, coupon=coupon)
+            except Exception as coupon_error:
+                # Log error but don't fail the order
+                import logging
+                logging.getLogger(__name__).error(f"Coupon generation error: {coupon_error}")
+            
             return order
 
         except Exception as e:

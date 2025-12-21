@@ -65,7 +65,7 @@ class CheckoutRequest(BaseModel):
     billing_address_id: Optional[int] = Field(None, description="Billing address ID (defaults to shipping)")
     notes: Optional[str] = Field(None, max_length=500)
     payment_method: Optional[str] = Field(None, description="Payment method (for future use)")
-    discount_code: Optional[str] = Field(None, description="Optional discount code to apply to the order")
+    coupon_code: Optional[str] = Field(None, description="Coupon code (personal reward or public promo code)")
 
 
 

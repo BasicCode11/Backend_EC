@@ -21,6 +21,9 @@ from .discount_application import DiscountApplication
 from .email_notification import EmailNotification, EmailStatus
 from .audit_log import AuditLog
 from .wishlist import Wishlist
+from .banner import Banner
+from .coupon_reward_rule import CouponRewardRule, RewardTriggerType
+from .user_coupon import UserCoupon
 
 __all__ = [
     "User",
@@ -55,4 +58,8 @@ __all__ = [
     "EmailStatus",
     "AuditLog",
     "Wishlist",
+    "Banner",
+    "CouponRewardRule",
+    "RewardTriggerType",
+    "UserCoupon",
 ]

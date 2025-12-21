@@ -81,7 +81,19 @@ class User(Base):
     )
 
 
-    
+    banners: Mapped[List["Banner"]] = relationship(
+        "Banner",
+        back_populates="user",
+        lazy="select",
+        cascade="all, delete-orphan"
+    )
+
+    user_coupons: Mapped[List["UserCoupon"]] = relationship(
+        "UserCoupon",
+        back_populates="user",
+        lazy="select",
+        cascade="all, delete-orphan"
+    )
 
     # Properties
     @property
