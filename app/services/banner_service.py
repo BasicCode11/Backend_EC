@@ -90,8 +90,8 @@ class BannerService:
                 "description": new_banner.description,
                 "status": new_banner.status,
                 "slug": new_banner.slug,
-                "start_date": new_banner.start_date,
-                "end_date": new_banner.end_date,
+                "start_date": new_banner.start_date.isoformat() if new_banner.start_date else None,
+                "end_date": new_banner.end_date.isoformat() if new_banner.end_date else None,
             }
         )
         return new_banner
@@ -109,8 +109,8 @@ class BannerService:
             "description": banner.description,
             "status": banner.status,
             "slug": banner.slug,
-            "start_date": banner.start_date if banner.start_date else None,
-            "end_date": banner.end_date if banner.end_date else None,
+            "start_date": banner.start_date.isoformat() if banner.start_date else None,
+            "end_date": banner.end_date.isoformat() if banner.end_date else None,
         }
         
         if image:
@@ -133,8 +133,8 @@ class BannerService:
             "description": banner.description,
             "status": banner.status,
             "slug": banner.slug,
-            "start_date": banner.start_date,
-            "end_date": banner.end_date,
+            "start_date": banner.start_date.isoformat() if banner.start_date else None,
+            "end_date": banner.end_date.isoformat() if banner.end_date else None,
         }
         AuditLogService.log_update(
             db=db,
@@ -171,8 +171,8 @@ class BannerService:
                 "description": banner.description,
                 "status": banner.status,
                 "slug": banner.slug,
-                "start_date": banner.start_date,
-                "end_date": banner.end_date,
+                "start_date": banner.start_date.isoformat() if banner.start_date else None,
+                "end_date": banner.end_date.isoformat() if banner.end_date else None,
             }
         )
         return {"message": "Banner deleted successfully"}

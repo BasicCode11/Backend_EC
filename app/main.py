@@ -32,6 +32,7 @@ from .routers.email_router import router as email_router
 from .routers.discount_router import router as discount_router
 from .routers.banner_router import router as banner_router
 from .routers.coupon_reward_router import router as coupon_reward_router
+from .routers.report_router import router as report_router
 from app.services.inventory_alert_service import InventoryAlertService
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -84,6 +85,7 @@ app.include_router(email_router,prefix="/api", tags=["Email"])
 app.include_router(banner_router, prefix="/api", tags=["Banners"])
 app.include_router(discount_router, prefix="/api", tags=["Discounts"])
 app.include_router(coupon_reward_router, prefix="/api/coupons", tags=["Coupon Rewards"])
+app.include_router(report_router, prefix="/api", tags=["Reports & Analytics"])
 
 @app.get("/", tags=["health"])
 def health():

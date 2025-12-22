@@ -156,6 +156,13 @@ class DataFactory:
             {"name": "coupon_rules:read"},
             {"name": "coupon_rules:update"},
             {"name": "coupon_rules:delete"},
+
+
+            {"name": "reports:sale"},
+            {"name": "reports:inventory"},
+            {"name": "reports:customer"},
+            {"name": "reports:analytics"},
+        
         ]
 
     @staticmethod
