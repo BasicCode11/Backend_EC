@@ -23,7 +23,7 @@ class CouponRewardRuleBase(BaseModel):
     description: Optional[str] = None
     trigger_type: RewardTriggerType
     threshold_amount: Optional[Decimal] = Field(None, ge=0, description="Min order amount to trigger")
-    threshold_count: Optional[int] = Field(None, ge=1, description="Number of orders to trigger")
+    threshold_count: Optional[int] = Field(None, ge=0, description="Number of orders to trigger")
     coupon_discount_type: CouponDiscountType
     coupon_discount_value: Decimal = Field(..., gt=0)
     coupon_minimum_order: Optional[Decimal] = Field(None, ge=0)
@@ -43,7 +43,7 @@ class CouponRewardRuleUpdate(BaseModel):
     description: Optional[str] = None
     trigger_type: Optional[RewardTriggerType] = None
     threshold_amount: Optional[Decimal] = Field(None, ge=0)
-    threshold_count: Optional[int] = Field(None, ge=1)
+    threshold_count: Optional[int] = Field(None, ge=0)
     coupon_discount_type: Optional[CouponDiscountType] = None
     coupon_discount_value: Optional[Decimal] = Field(None, gt=0)
     coupon_minimum_order: Optional[Decimal] = Field(None, ge=0)

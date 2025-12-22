@@ -151,6 +151,11 @@ class DataFactory:
             {"name": "banners:read"},
             {"name": "banners:update"},
             {"name": "banners:delete"},
+
+            {"name": "coupon_rules:create"},
+            {"name": "coupon_rules:read"},
+            {"name": "coupon_rules:update"},
+            {"name": "coupon_rules:delete"},
         ]
 
     @staticmethod

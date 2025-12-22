@@ -227,46 +227,20 @@ class CouponRewardService:
             subject = f"🎉 You've Earned a Coupon! {discount_text}"
             
             content = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                    <h1 style="color: white; margin: 0;">🎁 Congratulations!</h1>
-                    <p style="color: white; font-size: 18px;">You've earned a reward coupon!</p>
-                </div>
+                Hi {user.first_name} {user.last_name}, 🎁 Congratulations!
+                You've earned a new coupon: {coupon.code}
+                Discount: {discount_text}
+
+                Minimum Order Amount: ${coupon.minimum_order_amount if coupon.minimum_order_amount else 'None'} 
+                Maximum Discount: ${coupon.maximum_discount_amount if coupon.maximum_discount_amount else 'None'}
                 
-                <div style="padding: 30px; background: #f9f9f9;">
-                    <p>Hi <strong>{user.first_name}</strong>,</p>
-                    
-                    <p>Thank you for being a valued customer! As a reward for your purchase, here's a special coupon just for you:</p>
-                    
-                    <div style="background: white; border: 2px dashed #667eea; padding: 20px; text-align: center; margin: 20px 0; border-radius: 10px;">
-                        <p style="font-size: 14px; color: #666; margin: 0;">Your Coupon Code</p>
-                        <p style="font-size: 28px; font-weight: bold; color: #667eea; letter-spacing: 3px; margin: 10px 0;">
-                            {coupon.code}
-                        </p>
-                        <p style="font-size: 24px; color: #333; margin: 10px 0;">{discount_text}</p>
-                    </div>
-                    
-                    <div style="background: white; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                        <p style="font-size: 14px; color: #666; margin: 5px 0;">
-                            ✅ Valid Until: <strong>{coupon.valid_until.strftime('%B %d, %Y')}</strong>
-                        </p>
-                        {f'<p style="font-size: 14px; color: #666; margin: 5px 0;">✅ Minimum Order: <strong>${coupon.minimum_order_amount}</strong></p>' if coupon.minimum_order_amount else ''}
-                        {f'<p style="font-size: 14px; color: #666; margin: 5px 0;">✅ Maximum Discount: <strong>${coupon.maximum_discount_amount}</strong></p>' if coupon.maximum_discount_amount else ''}
-                    </div>
-                    
-                    <p>Use this code at checkout to enjoy your savings!</p>
-                    
-                    <p style="color: #888; font-size: 12px;">
-                        This coupon code is unique to your account and can only be used once.
-                    </p>
-                </div>
-                
-                <div style="background: #333; color: white; padding: 20px; text-align: center; border-radius: 0 0 10px 10px;">
-                    <p style="margin: 0; font-size: 14px;">Thank you for shopping with us!</p>
-                </div>
-            </body>
-            </html>
+
+                Use this code at checkout to enjoy your savings!
+                This coupon code is unique to your account and can only be used once.
+                Valid Until: {coupon.valid_until.strftime('%B %d, %Y')}
+                Valid From: {coupon.valid_from.strftime('%B %d, %Y')}
+
+                Thank you for shopping with us!
             """
             
             # Send email
@@ -507,9 +481,9 @@ class CouponRewardService:
         """Delete a public coupon."""
         coupon = db.query(UserCoupon).filter(
             UserCoupon.id == coupon_id,
-            UserCoupon.is_public == True
+            UserCoupon.is_used == True
         ).first()
-        
+
         if not coupon:
             raise NotFoundError(detail="Public coupon not found")
         
