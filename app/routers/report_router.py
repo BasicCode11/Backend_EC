@@ -20,10 +20,6 @@ router = APIRouter(
     tags=["Reports & Analytics"]
 )
 
-
-# ===========================================
-# 📊 1. SALES REPORT
-# ===========================================
 @router.get("/sales", response_model=SalesReportResponse)
 def get_sales_report(
     date_range_type: DateRangeType = Query(
@@ -61,10 +57,6 @@ def get_sales_report(
         limit=limit
     )
 
-
-# ===========================================
-# 📦 2. INVENTORY REPORT
-# ===========================================
 @router.get("/inventory", response_model=InventoryReportResponse)
 def get_inventory_report(
     db: Session = Depends(get_db),
@@ -93,9 +85,6 @@ def get_inventory_report(
     return ReportService.get_inventory_report(db)
 
 
-# ===========================================
-# 👥 3. CUSTOMER REPORT
-# ===========================================
 @router.get("/customers", response_model=CustomerReportResponse)
 def get_customer_report(
     date_range_type: DateRangeType = Query(default=DateRangeType.LAST_30_DAYS),
@@ -132,10 +121,6 @@ def get_customer_report(
         limit=limit
     )
 
-
-# ===========================================
-# 📥 4. EXPORT REPORTS (CSV)
-# ===========================================
 @router.get("/export/{report_type}")
 def export_report(
     report_type: str,

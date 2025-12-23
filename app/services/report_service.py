@@ -1,11 +1,3 @@
-"""
-Report Service - Business logic for generating comprehensive reports
-📊 Sales/Order Reports
-📦 Inventory Reports
-👥 Customer Reports
-📈 Analytics Dashboard
-📥 Export Reports
-"""
 
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, date, timedelta
@@ -42,11 +34,6 @@ class ReportService:
     """
     Comprehensive reporting service for e-commerce analytics.
     """
-
-    # ===========================================
-    # 🛠️ UTILITY METHODS
-    # ===========================================
-    
     @staticmethod
     def get_date_range(
         date_range_type: DateRangeType,
@@ -98,9 +85,6 @@ class ReportService:
             return 100.0 if current > 0 else 0.0
         return round(((current - previous) / previous) * 100, 2)
 
-    # ===========================================
-    # 📊 SALES/ORDER REPORTS
-    # ===========================================
     
     @staticmethod
     def get_sales_summary(
@@ -401,9 +385,6 @@ class ReportService:
             logger.error(f"Error generating sales report: {str(e)}")
             raise
 
-    # ===========================================
-    # 📦 INVENTORY REPORTS
-    # ===========================================
     
     @staticmethod
     def get_inventory_status(db: Session) -> InventoryStatus:
@@ -567,9 +548,6 @@ class ReportService:
             logger.error(f"Error generating inventory report: {str(e)}")
             raise
 
-    # ===========================================
-    # 👥 CUSTOMER REPORTS
-    # ===========================================
     
     @staticmethod
     def get_customer_summary(
@@ -770,9 +748,7 @@ class ReportService:
             logger.error(f"Error generating customer report: {str(e)}")
             raise
 
-    # ===========================================
-    # 📈 ANALYTICS DASHBOARD
-    # ===========================================
+    
     
     @staticmethod
     def get_analytics_dashboard(
@@ -905,9 +881,7 @@ class ReportService:
             logger.error(f"Error generating analytics dashboard: {str(e)}")
             raise
 
-    # ===========================================
-    # 🔍 QUICK STATS
-    # ===========================================
+    
     
     @staticmethod
     def get_quick_stats(db: Session) -> QuickStatsResponse:
@@ -960,9 +934,6 @@ class ReportService:
             logger.error(f"Error getting quick stats: {str(e)}")
             raise
 
-    # ===========================================
-    # 📥 EXPORT REPORTS
-    # ===========================================
     
     @staticmethod
     def export_to_csv(data: List[Dict], filename: str) -> Tuple[bytes, str]:

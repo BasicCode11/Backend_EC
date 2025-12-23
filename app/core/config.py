@@ -46,11 +46,11 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "http://localhost:5173",
             "http://localhost:5174",
+            "http://localhost:5175",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "https://ecommerce-pannel.vercel.app",
             "http://127.0.0.1:8000",
-            "http://192.168.10.10:5173",
         ],
         env="ALLOWED_ORIGINS",
     )

@@ -1,21 +1,8 @@
-"""
-Report Schemas - Response models for all report types
-📊 Sales/Order Reports
-📦 Inventory Reports
-👥 Customer Reports
-📈 Analytics Dashboard
-📥 Export Reports
-"""
-
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from enum import Enum
 
-
-# ===========================================
-# 📅 DATE RANGE & EXPORT ENUMS
-# ===========================================
 class DateRangeType(str, Enum):
     TODAY = "today"
     YESTERDAY = "yesterday"
@@ -33,9 +20,6 @@ class ExportFormat(str, Enum):
     CSV = "csv"
 
 
-# ===========================================
-# 📊 SALES/ORDER REPORT SCHEMAS
-# ===========================================
 class SalesSummary(BaseModel):
     """Summary of sales metrics"""
     total_orders: int = Field(..., description="Total number of orders")
@@ -117,9 +101,6 @@ class SalesTrendData(BaseModel):
     growth_rate: Optional[float] = None
 
 
-# ===========================================
-# 📦 INVENTORY REPORT SCHEMAS
-# ===========================================
 class InventoryStatus(BaseModel):
     """Inventory status summary"""
     total_products: int
@@ -185,9 +166,6 @@ class InventoryReportResponse(BaseModel):
     generated_at: datetime = Field(default_factory=datetime.now)
 
 
-# ===========================================
-# 👥 CUSTOMER REPORT SCHEMAS
-# ===========================================
 class CustomerSummary(BaseModel):
     """Customer base summary"""
     total_customers: int
@@ -240,9 +218,6 @@ class CustomerReportResponse(BaseModel):
     generated_at: datetime = Field(default_factory=datetime.now)
 
 
-# ===========================================
-# 📈 ANALYTICS DASHBOARD SCHEMAS
-# ===========================================
 class KPIMetrics(BaseModel):
     """Key Performance Indicators"""
     total_revenue: float
@@ -301,10 +276,6 @@ class AnalyticsDashboardResponse(BaseModel):
     sales_by_category: List[SalesByCategory] = []
     generated_at: datetime = Field(default_factory=datetime.now)
 
-
-# ===========================================
-# 📥 EXPORT REPORT SCHEMAS
-# ===========================================
 class ExportRequest(BaseModel):
     """Request for exporting reports"""
     report_type: str = Field(..., description="Type of report: sales, inventory, customer, analytics")
@@ -325,10 +296,6 @@ class ExportResponse(BaseModel):
     download_url: Optional[str] = None
     generated_at: datetime = Field(default_factory=datetime.now)
 
-
-# ===========================================
-# 🔍 GENERAL REPORT SCHEMAS
-# ===========================================
 class ReportFilter(BaseModel):
     """Common filters for reports"""
     date_range_type: DateRangeType = Field(default=DateRangeType.LAST_30_DAYS)
