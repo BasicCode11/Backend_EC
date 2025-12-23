@@ -458,3 +458,115 @@ class PaymentService:
         return db.query(Payment).filter(
             Payment.payment_gateway_transaction_id == transaction_id
         ).first()
+
+
+
+    @staticmethod
+    def get_transaction_list(
+        db: Session,
+        from_date: Optional[str] = "",
+        to_date: Optional[str] = "",
+        from_amount: Optional[float] = 0.01,
+        to_amount: Optional[float] = 1000,
+        status: Optional[str] = "",
+        page: int = 1,
+        pagination: int = 40
+        
+    ) -> Dict[str, Any]:
+
+        req_time = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+
+        merchant_id = settings.ABA_PAYWAY_MERCHANT_ID
+
+        # Convert all to string (ABA requirement)
+        payload = {
+            "req_time": req_time,
+            "merchant_id": merchant_id,
+            "from_date": from_date or "",
+            "to_date": to_date or "",
+            "from_amount": str(from_amount),
+            "to_amount": str(to_amount),
+            "status": status or "",
+            "page": str(page),
+            "pagination": str(pagination),
+        }
+
+        # EXACT hash order
+        hash_string = (
+            payload["req_time"]
+            + payload["merchant_id"]
+            + payload["from_date"]
+            + payload["to_date"]
+            + payload["from_amount"]
+            + payload["to_amount"]
+            + payload["status"]
+            + payload["page"]
+            + payload["pagination"]
+        )
+
+        hash_value = base64.b64encode(
+            hmac.new(
+                settings.ABA_PAYWAY_PUBLIC_KEY.encode(),
+                hash_string.encode(),
+                hashlib.sha512
+            ).digest()
+        ).decode()
+
+        payload["hash"] = hash_value
+
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(
+                    settings.ABA_PAYWAY_GET_TRANSACTION_URL,
+                    json=payload,  # ✅ JSON
+                    headers={"Content-Type": "application/json"}
+                )
+
+            response.raise_for_status()
+            response_data = response.json()
+
+        except httpx.RequestError as e:
+            return {
+                "success": False,
+                "message": f"Connection error: {str(e)}"
+            }
+        
+        except httpx.HTTPStatusError as e:
+            return {
+                "success": False,
+                "message": f"HTTP error: {str(e)}"
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": str(e)
+            }
+        
+        aba_status = response_data.get("status", {})
+
+        if aba_status.get("code") != "00":
+            return {
+                "success": False,
+                "message": aba_status.get("message", "ABA PayWay error"),
+                "aba_status": aba_status
+            }
+
+        data = response_data.get("data", [])
+
+        return {
+            "success": True,
+            "page": response_data.get("page", page),
+            "pagination": response_data.get("pagination", pagination),
+            "transactions": data,
+            "aba_status": aba_status
+        }
+
+       
+       
+        
+        
+        
+            
+
+        

@@ -78,3 +78,47 @@ class PaymentVerifyRequest(BaseModel):
     """Request to verify payment status"""
     transaction_id: str
     order_id: int
+
+class TransactionResponse(BaseModel):
+    transaction_id: str
+    transaction_date: str
+
+    original_currency: str
+    original_amount: float
+    total_amount: float
+
+    payment_status: str
+    payment_status_code: int
+    payment_type: str
+    payment_currency: str
+    payment_amount: Optional[float] = None
+
+    discount_amount: Optional[float] = None
+    refund_amount: Optional[float] = None
+
+    apv: Optional[str] = None
+    bank_ref: Optional[str] = None
+    bank_name: Optional[str] = None
+    card_source: Optional[str] = None
+
+    # ⚠️ ABA does NOT guarantee these
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    payer_account: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TransactionStatus(BaseModel):
+    code: str
+    tran_id: Optional[str] = None
+    message: str
+
+class PaymentTransactionListResponse(BaseModel):
+    data: list[TransactionResponse]
+    pagination: Optional[int] = None
+    page: Optional[int] = None
+    status: TransactionStatus

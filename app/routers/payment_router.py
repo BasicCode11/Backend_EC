@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response , Query
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -10,7 +10,8 @@ from app.schemas.payment import (
     ABAPayWayCheckoutResponse,
     ABAPayWayCallback,
     PaymentVerifyRequest,
-    PaymentResponse
+    PaymentResponse,
+    PaymentTransactionListResponse
 )
 from app.services.payment_service import ABAPayWayService, PaymentService
 from app.services.order_service import OrderService
@@ -286,6 +287,45 @@ def aba_payway_return(
             "message": str(e)
         }
 
+@router.get("/payments/transactionlist", response_model=PaymentTransactionListResponse)
+def get_transaction_list(
+    db: Session = Depends(get_db),
+    from_date: Optional[str] =  None,
+    to_date: Optional[str] =  None,
+    from_amount: Optional[float] =  None,
+    to_amount: Optional[float] =  None,
+    status: Optional[str] =  None,
+    page: int = Query(1, ge=1),
+    pagination: int = Query(40, ge=1, le=100),
+):
+    """
+    **Get transaction list**
+    
+    Returns a list of transactions for the current user.
+    """
+    
+    result = PaymentService.get_transaction_list(
+            db=db,
+            from_date=from_date,
+            to_date=to_date,
+            from_amount=from_amount,
+            to_amount=to_amount,
+            status=status,
+            page=page,
+            pagination=pagination
+    )
+    if not result["success"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=result["message"]
+        )
+
+    return PaymentTransactionListResponse(
+        data=result["transactions"],
+        page=int(result["page"]),
+        pagination=int(result["pagination"]),
+        status=result["aba_status"]
+    )
 
 @router.post("/payments/verify", response_model=dict)
 def verify_payment(

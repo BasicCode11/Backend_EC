@@ -92,7 +92,8 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str = Field(default="dvaocanqr", env="CLOUDINARY_CLOUD_NAME")
     CLOUDINARY_API_KEY: str = Field(default="398686351654423", env="CLOUDINARY_API_KEY")
     CLOUDINARY_API_SECRET: str = Field(default="jPRCzb3XzGqVswvzYbDld2uD07Y", env="CLOUDINARY_API_SECRET")
-
+    ABA_PAYWAY_GET_TRANSACTION_URL: str = Field(default="https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/transaction-list-2", env="ABA_PAYWAY_GET_TRANSACTION_URL")
+    
     @property
     def web_inactivity_timeout(self) -> timedelta:
         return timedelta(minutes=self.WEB_INACTIVITY_TIMEOUT_MINUTES)
