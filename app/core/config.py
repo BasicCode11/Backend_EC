@@ -50,6 +50,7 @@ class Settings(BaseSettings):
             "http://127.0.0.1:3000",
             "https://ecommerce-pannel.vercel.app",
             "http://127.0.0.1:8000",
+            "http://192.168.10.10:5173",
         ],
         env="ALLOWED_ORIGINS",
     )

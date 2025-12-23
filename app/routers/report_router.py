@@ -1,10 +1,3 @@
-"""
-Report Router - 4 Main Endpoints
-📊 Sales Report - Orders, revenue, sales trends
-📦 Inventory Report - Stock status, alerts
-👥 Customer Report - User activity, purchase history
-📥 Export Reports - CSV export for all reports
-"""
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
